@@ -114,8 +114,9 @@ class MITMProxy:
                 dev["mac"] = mac_clean
                 logger.info(
                     "┌─────────────────────────────────────────────┐\n"
-                    "│  AUTO-DETECT: MAC erkannt → %-14s  │\n"
-                    "│  Gerät: %-35s  │\n"
+                    "│  🕷  SpiderBridge — Gerät erkannt           │\n"
+                    "│  MAC: %-38s  │\n"
+                    "│  ID:  %-38s  │\n"
                     "│  config.yaml wird aktualisiert...           │\n"
                     "└─────────────────────────────────────────────┘",
                     mac_clean, dev.get("friendly_name", dev["id"]),
