@@ -1,112 +1,102 @@
-# Spider Farmer GGS → Home Assistant Bridge
+```
+ _________      .__    .___          ___.         .__    .___
+/   _____/_____ |__| __| _/__________\_ |_________|__| __| _/ ____   ____
+\_____  \\____ \|  |/ __ |/ __ \_  __ \ __ \_  __ \  |/ __ | / ___\_/ __ \
+/        \  |_> >  / /_/ \  ___/|  | \/ \_\ \  | \/  / /_/ |/ /_/  >  ___/
+/_______  /   __/|__\____ |\___  >__|  |___  /__|  |__\____ |\___  / \___  >
+        \/|__|           \/    \/          \/              \/_____/      \/
+```
 
-Local bridge for the Spider Farmer GGS Controller → Home Assistant via MQTT Discovery.
+**Spider Farmer GGS Controller → Home Assistant** — local, no cloud required.
 
-A Raspberry Pi 4 acts as a Wi-Fi hotspot for the GGS Controller. The Pi intercepts the MQTT/TLS traffic, normalizes the data, and publishes it to a local Mosquitto broker for Home Assistant. The official Spider Farmer app and cloud continue to work in parallel.
+SpiderBridge runs on a Raspberry Pi and acts as a transparent MITM proxy between your GGS Controller and the Spider Farmer cloud. All sensor data is published to your local Home Assistant via MQTT Discovery. The official Spider Farmer app keeps working in parallel.
 
 ```
 GGS Controller
-     │ Wi-Fi (hotspot on Pi)
-     ▼
-Raspberry Pi 4 ──── TLS MITM Proxy :8883
-     │                      │
-     │ eth0 (LAN)       Mosquitto :1883
-     │                      │
-     ▼                      ▼
-  SF Cloud            Home Assistant
-  (app keeps          (MQTT Discovery,
-   working)            auto entities)
+      │  Wi-Fi (Pi hotspot)
+      ▼
+Raspberry Pi  ──  TLS MITM Proxy :8883  ──  SF Cloud (app still works)
+      │
+   Mosquitto :1883
+      │
+Home Assistant  (auto-discovered entities, full local control)
 ```
 
 ---
 
-## Installation
+## One-line Install
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/iceboerg00/spiderfarmer-bridge/master/setup/bootstrap.sh | sudo bash
 ```
 
-The installer will:
+The setup wizard walks you through SSID, password, device name and HA MQTT credentials. Everything else is automatic.
 
-1. Clone this repository to `/opt/spiderfarmer-bridge`
-2. Run an interactive setup wizard (SSID, password, device name)
-3. Configure Mosquitto, Python venv, TLS certificates, and systemd services
-4. Set up the Wi-Fi hotspot
+**Requirements:**
+- Raspberry Pi 4 — Raspberry Pi OS 64-bit (Lite recommended)
+- Ethernet (eth0) for internet / HA connection
+- Wi-Fi (wlan0) used as hotspot for the GGS Controller
 
 ---
 
-## Requirements
+## What you get in Home Assistant
 
-- Raspberry Pi 4 with Raspberry Pi OS (64-bit, Lite or Desktop)
-- LAN cable on the Pi (eth0) for internet access
-- Wi-Fi interface (wlan0) used as hotspot for the GGS Controller
-- Home Assistant on another device in the local network
+| Entity | Details |
+|--------|---------|
+| 🌡 Air Temperature / Humidity / VPD | Live sensor data |
+| 🌱 Soil Temperature / Humidity / EC | Per sensor + average (auto-discovered) |
+| 💡 Light 1 / Light 2 | On/off, brightness 0–100%, mode (Manual/Timer, PPFD) |
+| 💨 Fan Exhaust | On/off, speed 0–100% |
+| 💨 Fan Circulation | On/off, speed 0–10 |
+| 🔌 Outlets 1–10 | Individual on/off switches |
+| 🌡 Heater / Humidifier / Dehumidifier | On/off |
+
+Entities appear automatically the first time the controller connects — no manual configuration needed.
 
 ---
 
 ## First Connection
 
-After installation:
+After install, connect the GGS Controller to your configured Wi-Fi SSID. The proxy auto-detects the MAC address on first connect and logs:
 
-1. **Start services:**
-   ```bash
-   sudo systemctl start sf-proxy sf-discovery
-   ```
+```
+┌─────────────────────────────────────────────┐
+│  🕷  SpiderBridge — Gerät erkannt           │
+│  MAC: 7C2C67F03DAC                          │
+│  ID:  Spider Farmer GGS                     │
+└─────────────────────────────────────────────┘
+```
 
-2. **Connect the GGS Controller** to the configured Wi-Fi network
-
-3. **MAC address is auto-detected** — the proxy detects the controller's MAC on first connect and saves it to `config.yaml`. The log will show:
-   ```
-   AUTO-DETECT: MAC detected → AABBCCDDEEFF
-   ```
-
-4. **Watch logs:**
-   ```bash
-   journalctl -fu sf-proxy
-   ```
+Watch logs:
+```bash
+sudo pm2 logs sf-proxy
+```
 
 ---
 
-## Home Assistant Setup
+## Home Assistant MQTT Setup
 
-In Home Assistant → **Settings → Devices & Services → MQTT → Configure:**
+**Settings → Devices & Services → MQTT → Configure:**
 
-| Field    | Value                                      |
-|----------|--------------------------------------------|
-| Broker   | Pi IP address (eth0, e.g. `192.168.1.100`) |
-| Port     | `1883`                                     |
-| Username | *(leave empty)*                            |
-| Password | *(leave empty)*                            |
-
-All entities appear automatically via MQTT Discovery under one device.
-
-### Available Entities
-
-| Type   | Entities                                                  |
-|--------|-----------------------------------------------------------|
-| Sensor | Temperature, Humidity, VPD                                |
-| Sensor | Soil Temperature / Humidity / EC (average + per sensor)   |
-| Light  | Light (on/off + brightness)                               |
-| Fan    | Exhaust Fan (on/off + speed 0–100%)                       |
-| Fan    | Circulation Fan (on/off + speed 0–10)                     |
-| Switch | Heater, Humidifier, Dehumidifier                          |
-| Switch | Outlet 1–4                                                |
-
-Soil sensors are discovered automatically with their hardware ID when the controller first connects.
+| Field | Value |
+|-------|-------|
+| Broker | Pi IP (eth0), e.g. `192.168.1.100` |
+| Port | `1883` |
+| Username / Password | *(leave empty)* |
 
 ---
 
-## Controls & Scripts
+## Managing Services
 
 ```bash
-sudo bash /opt/spiderfarmer-bridge/start.sh   # Start all services
-sudo bash /opt/spiderfarmer-bridge/stop.sh    # Stop all services
+sudo pm2 list                  # Status
+sudo pm2 logs sf-proxy         # Live proxy log
+sudo pm2 logs sf-discovery     # Discovery publisher log
+sudo pm2 restart sf-proxy      # Restart proxy
 ```
 
 ```bash
-journalctl -fu sf-proxy        # Proxy logs (connections, MQTT data)
-journalctl -fu sf-discovery    # HA Discovery publisher
-journalctl -fu mosquitto       # MQTT broker
+mosquitto_sub -h localhost -p 1883 -t 'spiderfarmer/#' -v   # Watch all MQTT topics
 ```
 
 ---
@@ -114,27 +104,24 @@ journalctl -fu mosquitto       # MQTT broker
 ## Update
 
 ```bash
-cd /opt/spiderfarmer-bridge
-sudo git pull
-sudo systemctl restart sf-proxy sf-discovery
+sudo git -C /opt/spiderfarmer-bridge pull
+sudo pm2 restart sf-proxy sf-discovery
 ```
 
 ---
 
 ## Troubleshooting
 
-**Controller does not connect to hotspot**
-- GGS Controller supports 2.4 GHz only
-- Check: `nmcli con show SF-Bridge-Hotspot | grep band`
+**Controller won't connect to hotspot**
+- GGS Controller is 2.4 GHz only — check: `nmcli con show SF-Bridge-Hotspot | grep band`
 
 **No data in Home Assistant**
-- Check MQTT connection in HA
-- Watch proxy log: `journalctl -fu sf-proxy`
-- Verify MQTT topics: `mosquitto_sub -h 127.0.0.1 -p 1883 -t 'spiderfarmer/#' -v`
+- Verify MQTT broker connection in HA
+- Check: `mosquitto_sub -h localhost -p 1883 -t 'spiderfarmer/#' -v`
 
-**Outlet/heater entities always unknown**
-- These accessories may not be connected to the controller
-- They update automatically once the controller reports their state
+**Entities show as unavailable**
+- Accessories (heater, humidifier, etc.) only appear after the controller reports their state
+- Restart sf-discovery: `sudo pm2 restart sf-discovery`
 
 ---
 
@@ -142,14 +129,12 @@ sudo systemctl restart sf-proxy sf-discovery
 
 ```
 spiderfarmer-bridge/
-├── proxy/              # MQTT parser, normalizer, command handler, MITM proxy
-├── ha/                 # HA Discovery payloads and publisher service
-├── config/             # config.yaml, mosquitto.conf
-├── setup/              # bootstrap.sh, install.sh, wizard.sh, hotspot.sh
-├── systemd/            # sf-proxy.service, sf-discovery.service
-├── certs/              # TLS certificates
-├── tests/              # Unit tests (pytest)
-├── start.sh / stop.sh
+├── proxy/          # MITM proxy, MQTT parser, normalizer, command handler
+├── ha/             # HA Discovery builder and publisher
+├── config/         # config.yaml, mosquitto.conf
+├── setup/          # bootstrap.sh, install.sh, wizard.sh, hotspot.sh
+├── certs/          # TLS certificates
+├── tests/          # Unit tests (pytest)
 ├── main_proxy.py
 └── main_discovery.py
 ```
@@ -159,6 +144,5 @@ spiderfarmer-bridge/
 ## Tests
 
 ```bash
-cd /opt/spiderfarmer-bridge
-.venv/bin/pytest tests/ -v
+cd /opt/spiderfarmer-bridge && .venv/bin/pytest tests/ -v
 ```
