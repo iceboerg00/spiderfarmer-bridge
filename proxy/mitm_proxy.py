@@ -134,10 +134,13 @@ class MITMProxy:
 
     async def handle_command(self, topic: str, value: str) -> None:
         """Handle an incoming HA command from local Mosquitto."""
+        # topic: spiderfarmer/{device_id}/command/{field}[/{subfield}]/set
         parts = topic.split("/")
         if len(parts) < 5:
             return
-        device_id, field = parts[1], parts[3]
+        device_id = parts[1]
+        field = parts[3]
+        subfield = parts[4] if len(parts) >= 6 and parts[4] != "set" else None
 
         session = self._sessions.get(device_id)
         if session is None:
@@ -149,7 +152,7 @@ class MITMProxy:
             outlet_num = int(field[7:])
 
         payload = translate_command(field, value, session.mac, session.uid, outlet_num,
-                                   device_state=session.device_state)
+                                    device_state=session.device_state, subfield=subfield)
         if payload:
             await session.inject(payload)
 

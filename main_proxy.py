@@ -33,7 +33,7 @@ def main() -> None:
             loop,
         )
 
-    mq.subscribe("spiderfarmer/+/command/#")
+    mq.subscribe("spiderfarmer/+/command/#")  # matches all command subtopics
     mq.on_message = on_command
 
     server_ssl_ctx = proxy.build_server_ssl_ctx()

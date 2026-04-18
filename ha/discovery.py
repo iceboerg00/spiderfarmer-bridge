@@ -64,39 +64,49 @@ def _switch(device_id: str, field: str, name: str, cfg: dict) -> Tuple[str, dict
 
 def _light(device_id: str, name: str, cfg: dict) -> Tuple[str, dict]:
     uid = f"spiderfarmer_{device_id}_light"
+    base = f"spiderfarmer/{device_id}"
     payload = {
         "name": name,
         "unique_id": uid,
-        "state_topic": f"spiderfarmer/{device_id}/state/light_on",
-        "command_topic": f"spiderfarmer/{device_id}/command/light_on/set",
-        "brightness_state_topic": f"spiderfarmer/{device_id}/state/light_1_brightness",
-        "brightness_command_topic": f"spiderfarmer/{device_id}/command/light_1_brightness/set",
+        "schema": "json",
+        "state_topic": f"{base}/state/light",
+        "command_topic": f"{base}/command/light/set",
+        "brightness": True,
         "brightness_scale": 100,
-        "on_command_type": "first",
-        "payload_on": "ON",
-        "payload_off": "OFF",
-        "availability_topic": f"spiderfarmer/{device_id}/availability",
+        "availability_topic": f"{base}/availability",
         "device": _device_info(device_id, cfg),
     }
     return f"homeassistant/light/{uid}/config", payload
 
 
-def _fan(device_id: str, field_on: str, field_speed: str, name: str, speed_max: int, cfg: dict) -> Tuple[str, dict]:
-    uid = f"spiderfarmer_{device_id}_{field_on}"
+def _fan(device_id: str, module: str, name: str, speed_max: int, cfg: dict,
+         oscillation: bool = False) -> Tuple[str, dict]:
+    uid = f"spiderfarmer_{device_id}_{module}"
+    base = f"spiderfarmer/{device_id}"
     payload = {
         "name": name,
         "unique_id": uid,
-        "state_topic": f"spiderfarmer/{device_id}/state/{field_on}",
-        "command_topic": f"spiderfarmer/{device_id}/command/{field_on}/set",
-        "percentage_state_topic": f"spiderfarmer/{device_id}/state/{field_speed}",
-        "percentage_command_topic": f"spiderfarmer/{device_id}/command/{field_speed}/set",
-        "speed_range_min": 1,
-        "speed_range_max": speed_max,
+        "state_topic": f"{base}/state/{module}",
+        "state_value_template": "{{ value_json.state }}",
+        "command_topic": f"{base}/command/{module}/set",
         "payload_on": "ON",
         "payload_off": "OFF",
-        "availability_topic": f"spiderfarmer/{device_id}/availability",
+        "percentage_state_topic": f"{base}/state/{module}",
+        "percentage_value_template": "{{ value_json.percentage | int }}",
+        "percentage_command_topic": f"{base}/command/{module}/percentage/set",
+        "speed_range_min": 1,
+        "speed_range_max": speed_max,
+        "availability_topic": f"{base}/availability",
         "device": _device_info(device_id, cfg),
     }
+    if oscillation:
+        payload.update({
+            "oscillation_state_topic": f"{base}/state/{module}",
+            "oscillation_value_template": "{{ value_json.oscillating }}",
+            "oscillation_command_topic": f"{base}/command/{module}/oscillation/set",
+            "payload_oscillation_on": "oscillate_on",
+            "payload_oscillation_off": "oscillate_off",
+        })
     return f"homeassistant/fan/{uid}/config", payload
 
 
@@ -119,8 +129,8 @@ def publish_discovery_for_device(
     entities.append(_light(device_id, "Light", device_cfg))
 
     # ── Fans ──────────────────────────────────────────────────────────────────
-    entities.append(_fan(device_id, "blower_on", "blower_speed", "Fan Exhaust",     100, device_cfg))
-    entities.append(_fan(device_id, "fan_on",    "fan_speed",    "Fan Circulation", 10,  device_cfg))
+    entities.append(_fan(device_id, "blower", "Fan Exhaust",     100, device_cfg))
+    entities.append(_fan(device_id, "fan",    "Fan Circulation", 10,  device_cfg, oscillation=True))
 
     # ── Soil sensors (average) ────────────────────────────────────────────────
     entities += [

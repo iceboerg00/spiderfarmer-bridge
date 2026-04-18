@@ -1,3 +1,4 @@
+import json
 from typing import Dict, Any
 
 
@@ -14,80 +15,53 @@ _SENSOR_FIELD_MAP = [
 
 
 def _on_off(val) -> str:
-    """Convert Spider Farmer on/off values to ON/OFF string."""
     return "ON" if val in (1, True, "1", "true", "on") else "OFF"
 
 
-def normalize_sensors(device_id: str, data: Dict[str, Any]) -> Dict[str, str]:
-    """Map ggs/.../sensors payload to normalized topics."""
-    result: Dict[str, str] = {}
-    for sf_key, norm_key in _SENSOR_FIELD_MAP:
-        if sf_key in data:
-            result[f"spiderfarmer/{device_id}/state/{norm_key}"] = str(data[sf_key])
-    return result
-
-
 def normalize_status(device_id: str, data: Dict[str, Any]) -> Dict[str, str]:
-    """Map ggs/.../status payload to normalized topics."""
     result: Dict[str, str] = {}
-    d = data.get("data", data)  # handle wrapped and unwrapped payloads
+    d = data.get("data", data)
 
-    # Environmental sensor block inside status
+    # ── Air sensors ───────────────────────────────────────────────────────────
     sensor = d.get("sensor", {})
     for sf_key, norm_key in _SENSOR_FIELD_MAP:
         if sf_key in sensor:
             result[f"spiderfarmer/{device_id}/state/{norm_key}"] = str(sensor[sf_key])
 
-    # Blower
-    blower = d.get("blower", {})
-    if blower:
-        level = blower.get("mLevel", blower.get("level"))
-        if level is not None:
-            result[f"spiderfarmer/{device_id}/state/blower_speed"] = str(level)
-        on = blower.get("mOnOff", blower.get("on"))
-        if on is not None:
-            result[f"spiderfarmer/{device_id}/state/blower_on"] = _on_off(on)
-
-    # Fan
-    fan = d.get("fan", {})
-    if fan:
-        level = fan.get("mLevel", fan.get("level"))
-        if level is not None:
-            result[f"spiderfarmer/{device_id}/state/fan_speed"] = str(level)
-        on = fan.get("mOnOff", fan.get("on"))
-        if on is not None:
-            result[f"spiderfarmer/{device_id}/state/fan_on"] = _on_off(on)
-
-    # Light 1
+    # ── Light (JSON schema) ───────────────────────────────────────────────────
     light = d.get("light", {})
     if light:
-        level = light.get("mLevel", light.get("level"))
-        if level is not None:
-            result[f"spiderfarmer/{device_id}/state/light_1_brightness"] = str(level)
-        on = light.get("mOnOff", light.get("on"))
-        if on is not None:
-            result[f"spiderfarmer/{device_id}/state/light_on"] = _on_off(on)
+        result[f"spiderfarmer/{device_id}/state/light"] = json.dumps({
+            "state": _on_off(light.get("on", light.get("mOnOff", 0))),
+            "brightness": light.get("level", light.get("mLevel", 0)),
+        })
 
-    # Light 2
-    light2 = d.get("light2", {})
-    if light2:
-        level = light2.get("mLevel", light2.get("level"))
-        if level is not None:
-            result[f"spiderfarmer/{device_id}/state/light_2_brightness"] = str(level)
+    # ── Blower (JSON state) ───────────────────────────────────────────────────
+    blower = d.get("blower", {})
+    if blower:
+        result[f"spiderfarmer/{device_id}/state/blower"] = json.dumps({
+            "state": _on_off(blower.get("on", blower.get("mOnOff", 0))),
+            "percentage": blower.get("level", blower.get("mLevel", 0)),
+        })
 
-    # Heater, Humidifier, Dehumidifier
-    for module, state_key in [
-        ("heater", "heater"),
-        ("humidifier", "humidifier"),
-        ("dehumidifier", "dehumidifier"),
-    ]:
+    # ── Fan (JSON state + oscillation) ────────────────────────────────────────
+    fan = d.get("fan", {})
+    if fan:
+        result[f"spiderfarmer/{device_id}/state/fan"] = json.dumps({
+            "state": _on_off(fan.get("on", fan.get("mOnOff", 0))),
+            "percentage": fan.get("level", fan.get("mLevel", 0)),
+            "oscillating": fan.get("shakeLevel", 0) > 0,
+        })
+
+    # ── Accessories ───────────────────────────────────────────────────────────
+    for module in ("heater", "humidifier", "dehumidifier"):
         mod = d.get(module, {})
         if mod:
             on = mod.get("mOnOff", mod.get("on"))
             if on is not None:
-                result[f"spiderfarmer/{device_id}/state/{state_key}"] = _on_off(on)
+                result[f"spiderfarmer/{device_id}/state/{module}"] = _on_off(on)
 
-    # Individual soil sensors — keyed by hardware ID
+    # ── Individual soil sensors ───────────────────────────────────────────────
     for s in d.get("sensors", []):
         sid = s.get("id")
         if not sid or sid == "avg":
@@ -96,13 +70,11 @@ def normalize_status(device_id: str, data: Dict[str, Any]) -> Dict[str, str]:
             if sf_key in s:
                 result[f"spiderfarmer/{device_id}/state/soil_{sid}_{norm_key}"] = str(s[sf_key])
 
-    # Outlets O1..ON
-    outlet = d.get("outlet", {})
-    for key, val in outlet.items():
+    # ── Outlets ───────────────────────────────────────────────────────────────
+    for key, val in d.get("outlet", {}).items():
         if key.startswith("O") and key[1:].isdigit():
-            num = key[1:]
             on = val.get("mOnOff", val.get("on"))
             if on is not None:
-                result[f"spiderfarmer/{device_id}/state/outlet_{num}"] = _on_off(on)
+                result[f"spiderfarmer/{device_id}/state/outlet_{key[1:]}"] = _on_off(on)
 
     return result
