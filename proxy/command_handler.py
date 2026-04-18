@@ -39,7 +39,7 @@ def translate_command(
         return _build(mac, uid, "outlet", ok, {"modeType": 0, "mOnOff": _onoff(value)})
 
     # ── Light / Light2 ────────────────────────────────────────────────────────
-    _EFFECT_TO_MODE = {"Manual / Timer": 1, "PPFD": 12}
+    _EFFECT_TO_MODE = {"Modus: Manual / Timer": 1, "Modus: PPFD": 12}
     if field in ("light", "light2"):
         cur = state.get(field, {})
         try:

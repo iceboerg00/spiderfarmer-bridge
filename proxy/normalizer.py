@@ -29,7 +29,7 @@ def normalize_status(device_id: str, data: Dict[str, Any]) -> Dict[str, str]:
             result[f"spiderfarmer/{device_id}/state/{norm_key}"] = str(sensor[sf_key])
 
     # ── Light (JSON schema with effect for mode) ──────────────────────────────
-    _LIGHT_MODES = {1: "Manual / Timer", 12: "PPFD"}
+    _LIGHT_MODES = {1: "Modus: Manual / Timer", 12: "Modus: PPFD"}
     light = d.get("light", {})
     if light:
         mode = light.get("modeType", 1)
