@@ -55,18 +55,17 @@ else
   exit 1
 fi
 
-# 6. systemd services
-echo "[install] Installing systemd services..."
-for svc in sf-proxy sf-discovery sf-update; do
-  sed "s|/opt/spiderfarmer-bridge|$INSTALL_DIR|g" \
-    "$INSTALL_DIR/systemd/${svc}.service" \
-    > "/etc/systemd/system/${svc}.service"
-done
-cp "$INSTALL_DIR/systemd/sf-update.timer" /etc/systemd/system/sf-update.timer
-chmod +x "$INSTALL_DIR/update.sh"
-systemctl daemon-reload
-systemctl enable sf-proxy sf-discovery sf-update.timer
-echo "[install] Services installed"
+# 6. PM2
+echo "[install] Setting up PM2..."
+if ! command -v pm2 &>/dev/null; then
+  apt-get install -y -qq nodejs npm
+  npm install -g pm2 --quiet
+fi
+chmod +x "$INSTALL_DIR/update.sh" "$INSTALL_DIR/start.sh" "$INSTALL_DIR/stop.sh"
+pm2 start "$INSTALL_DIR/ecosystem.config.js"
+pm2 startup systemd -u root --hp /root | tail -1 | bash
+pm2 save
+echo "[install] PM2 configured"
 
 # 7. Hotspot
 echo "[install] Configuring hotspot..."

@@ -19,6 +19,6 @@ echo "[update] New version available — updating..."
 git pull --ff-only origin master
 
 echo "[update] Restarting services..."
-systemctl restart sf-proxy sf-discovery
+pm2 restart sf-proxy sf-discovery
 
 echo "[update] Update complete."
