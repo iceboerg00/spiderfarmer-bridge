@@ -40,17 +40,17 @@ class ProxySession:
         self._client_writer = writer
 
     async def inject(self, payload: dict) -> None:
-        """Send command via upstream (real SF server routes it to device)."""
-        if self._upstream_writer is None:
-            logger.warning("[%s] inject: no upstream connection", self.device_id)
+        """Inject command directly into the device TLS connection."""
+        if self._client_writer is None:
+            logger.warning("[%s] inject: no device connection", self.device_id)
             return
         raw = build_publish(
             topic=f"SF/GGS/CB/API/DOWN/{self.mac.upper().replace(':', '')}",
             message=json.dumps(payload).encode(),
         )
         try:
-            self._upstream_writer.write(raw)
-            await self._upstream_writer.drain()
+            self._client_writer.write(raw)
+            await self._client_writer.drain()
             logger.info("[%s] Command injected: %s", self.device_id, payload.get("params", {}))
         except Exception as e:
             logger.error("[%s] inject error: %s", self.device_id, e)

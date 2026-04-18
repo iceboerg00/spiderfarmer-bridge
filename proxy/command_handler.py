@@ -116,11 +116,11 @@ def translate_command(
             return None
         cur = state.get("fan", {})
         return _build(mac, uid, "device", "fan", {
-            "mOnOff": cur.get("on", cur.get("mOnOff", 1)),
-            "mLevel": cur.get("level", cur.get("mLevel", 5)),
             "shakeLevel": shake,
             "natural": 0,
             "timePeriod": _TIME_PERIOD,
+            "mOnOff": cur.get("on", cur.get("mOnOff", 1)),
+            "mLevel": cur.get("level", cur.get("mLevel", 5)),
         })
 
     # ── Fan oscillation (on/off toggle) ───────────────────────────────────────
@@ -128,11 +128,11 @@ def translate_command(
         shake = 1 if value == "oscillate_on" else 0
         cur = state.get("fan", {})
         return _build(mac, uid, "device", "fan", {
-            "mOnOff": cur.get("on", cur.get("mOnOff", 1)),
-            "mLevel": cur.get("level", cur.get("mLevel", 5)),
             "shakeLevel": shake,
             "natural": 0,
             "timePeriod": _TIME_PERIOD,
+            "mOnOff": cur.get("on", cur.get("mOnOff", 1)),
+            "mLevel": cur.get("level", cur.get("mLevel", 5)),
         })
 
     # ── Climate accessories ───────────────────────────────────────────────────
