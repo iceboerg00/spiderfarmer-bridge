@@ -238,9 +238,9 @@ class MITMProxy:
                         buf_down += data
                         pkts_down, buf_down = parse_packets(buf_down)
                         for p in pkts_down:
-                            if p.packet_type == MQTT_PUBLISH and p.topic:
-                                logger.info("SERVER→DEVICE topic=%s payload=%s",
-                                            p.topic, p.message[:200] if p.message else None)
+                            logger.info("SERVER→DEVICE pkt_type=%d topic=%s payload=%s",
+                                        p.packet_type, p.topic,
+                                        p.message[:100] if p.message else None)
                         try:
                             client_writer.write(data)
                             await client_writer.drain()
