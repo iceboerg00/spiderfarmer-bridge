@@ -108,33 +108,6 @@ def translate_command(
             "timePeriod": _TIME_PERIOD,
         })
 
-    # ── Fan shake level ───────────────────────────────────────────────────────
-    if field == "fan_shake":
-        try:
-            shake = max(0, min(10, int(value)))
-        except ValueError:
-            return None
-        cur = state.get("fan", {})
-        return _build(mac, uid, "device", "fan", {
-            "shakeLevel": shake,
-            "natural": 0,
-            "timePeriod": _TIME_PERIOD,
-            "mOnOff": cur.get("on", cur.get("mOnOff", 1)),
-            "mLevel": cur.get("level", cur.get("mLevel", 5)),
-        })
-
-    # ── Fan oscillation (on/off toggle) ───────────────────────────────────────
-    if field == "fan" and subfield == "oscillation":
-        shake = 1 if value == "oscillate_on" else 0
-        cur = state.get("fan", {})
-        return _build(mac, uid, "device", "fan", {
-            "shakeLevel": shake,
-            "natural": 0,
-            "timePeriod": _TIME_PERIOD,
-            "mOnOff": cur.get("on", cur.get("mOnOff", 1)),
-            "mLevel": cur.get("level", cur.get("mLevel", 5)),
-        })
-
     # ── Climate accessories ───────────────────────────────────────────────────
     if field in ("heater", "humidifier", "dehumidifier"):
         cur = state.get(field, {})
