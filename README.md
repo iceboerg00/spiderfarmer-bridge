@@ -1,15 +1,6 @@
 <p align="center">
-  <img src="logo.png" alt="SpiderBridge Logo" width="200"/>
+  <img src="logo.png" alt="SpiderBridge Logo" width="400"/>
 </p>
-
-```
- _________      .__    .___          ___.         .__    .___
-/   _____/_____ |__| __| _/__________\_ |_________|__| __| _/ ____   ____
-\_____  \\____ \|  |/ __ |/ __ \_  __ \ __ \_  __ \  |/ __ | / ___\_/ __ \
-/        \  |_> >  / /_/ \  ___/|  | \/ \_\ \  | \/  / /_/ |/ /_/  >  ___/
-/_______  /   __/|__\____ |\___  >__|  |___  /__|  |__\____ |\___  / \___  >
-        \/|__|           \/    \/          \/              \/_____/      \/
-```
 
 Local bridge for the Spider Farmer GGS Controller → Home Assistant via MQTT Discovery.
 
