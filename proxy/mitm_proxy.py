@@ -46,7 +46,7 @@ class ProxySession:
             return
         raw = build_publish(
             topic=f"SF/GGS/CB/API/DOWN/{self.mac.upper().replace(':', '')}",
-            message=json.dumps(payload).encode(),
+            message=json.dumps(payload, separators=(',', ':')).encode(),
         )
         try:
             self._client_writer.write(raw)
