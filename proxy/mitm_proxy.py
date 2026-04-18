@@ -206,6 +206,8 @@ class MITMProxy:
                         buf += data
                         packets, buf = parse_packets(buf)
                         for pkt in packets:
+                            if pkt.packet_type not in (MQTT_CONNECT, MQTT_PUBLISH):
+                                logger.info("DEVICE→SERVER pkt_type=%d", pkt.packet_type)
                             if pkt.packet_type == MQTT_CONNECT and pkt.client_id:
                                 nonlocal_session[0] = await on_connect_packet(pkt.client_id)
                             elif pkt.packet_type == MQTT_PUBLISH:
