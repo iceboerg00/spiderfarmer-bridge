@@ -221,6 +221,7 @@ class MITMProxy:
                         pass
 
             async def relay_down():
+                buf = b""
                 try:
                     while True:
                         try:
@@ -229,6 +230,12 @@ class MITMProxy:
                             break
                         if not data:
                             break
+                        buf += data
+                        pkts, buf = parse_packets(buf)
+                        for p in pkts:
+                            if p.packet_type == MQTT_PUBLISH and p.topic:
+                                logger.info("DOWN topic=%s payload=%s", p.topic,
+                                            p.message[:80] if p.message else None)
                         try:
                             client_writer.write(data)
                             await client_writer.drain()
