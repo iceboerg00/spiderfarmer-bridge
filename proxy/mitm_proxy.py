@@ -31,6 +31,7 @@ class ProxySession:
         self.mqtt_client = mqtt_client
         self._upstream_writer: Optional[asyncio.StreamWriter] = None
         self._client_writer: Optional[asyncio.StreamWriter] = None
+        self.device_state: Dict[str, dict] = {}  # module → current state from getDevSta
 
     def set_upstream(self, writer: asyncio.StreamWriter) -> None:
         self._upstream_writer = writer
@@ -147,7 +148,8 @@ class MITMProxy:
         if field.startswith("outlet_") and field[7:].isdigit():
             outlet_num = int(field[7:])
 
-        payload = translate_command(field, value, session.mac, session.uid, outlet_num)
+        payload = translate_command(field, value, session.mac, session.uid, outlet_num,
+                                   device_state=session.device_state)
         if payload:
             await session.inject(payload)
 
@@ -289,6 +291,12 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
     uid = data.get("uid", "")
     if uid and session.uid != uid:
         session.uid = uid
+
+    # Store current module states for use in commands
+    d = data.get("data", {})
+    for module in ("light", "blower", "fan", "heater", "humidifier", "dehumidifier"):
+        if module in d:
+            session.device_state[module] = d[module]
 
     # Publish discovery for newly seen soil sensor IDs
     seen = known_soil_ids.setdefault(session.device_id, set())

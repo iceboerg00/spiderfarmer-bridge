@@ -4,28 +4,23 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# (domain, module_key, param_key, converter)
+
 def _onoff(v: str) -> int:
     return 1 if str(v).upper() in ("ON", "1", "TRUE") else 0
 
 
-_COMMAND_MAP = {
-    "light_on":           ("device", "light",        "mOnOff", _onoff),
-    "light_1_brightness": ("device", "light",        "mLevel", int),
-    "blower_on":          ("device", "blower",       "mOnOff", _onoff),
-    "blower_speed":       ("device", "blower",       "mLevel", int),
-    "fan_on":             ("device", "fan",           "mOnOff", _onoff),
-    "fan_speed":          ("device", "fan",           "mLevel", int),
-    "heater":             ("device", "heater",        "mOnOff", _onoff),
-    "humidifier":         ("device", "humidifier",   "mOnOff", _onoff),
-    "dehumidifier":       ("device", "dehumidifier", "mOnOff", _onoff),
-}
-
-_RANGES = {
-    "blower_speed":       (0, 100),
-    "fan_speed":          (0, 10),
-    "light_1_brightness": (0, 100),
-}
+def _build_payload(mac: str, uid: str, module: str, module_obj: dict) -> dict:
+    return {
+        "method": "setConfigField",
+        "params": {
+            "keyPath": ["device" if module != "outlet" else "outlet", module],
+            module: module_obj,
+        },
+        "pid": mac,
+        "msgId": str(int(time.time() * 1000)),
+        "uid": uid,
+        "UTC": int(time.time()),
+    }
 
 
 def translate_command(
@@ -34,48 +29,117 @@ def translate_command(
     mac: str,
     uid: str,
     outlet_num: Optional[int] = None,
+    device_state: Optional[dict] = None,
 ) -> Optional[dict]:
-    """
-    Translate a normalized HA command to Spider Farmer setConfigField payload.
-    Returns dict or None if field is unknown or value is invalid/out-of-range.
-    """
-    now = int(time.time())
+    state = device_state or {}
 
+    # ── Outlet ────────────────────────────────────────────────────────────────
     if outlet_num is not None:
-        on_val = 1 if str(value).upper() in ("ON", "1") else 0
         ok = f"O{outlet_num}"
-        return {
+        cur = state.get("outlet", {}).get(ok, {})
+        obj = {**cur, "modeType": cur.get("modeType", 0), "mOnOff": _onoff(value)}
+        payload = {
             "method": "setConfigField",
-            "params": {"keyPath": ["outlet", ok], ok: {"mOnOff": on_val}},
+            "params": {"keyPath": ["outlet", ok], ok: obj},
             "pid": mac,
-            "msgId": int(time.time() * 1000),
+            "msgId": str(int(time.time() * 1000)),
             "uid": uid,
-            "UTC": now,
+            "UTC": int(time.time()),
         }
+        return payload
 
-    if field not in _COMMAND_MAP:
-        logger.warning("Unknown command field: %s", field)
-        return None
+    # ── Light ─────────────────────────────────────────────────────────────────
+    if field == "light_on":
+        cur = state.get("light", {})
+        obj = {
+            "modeType": cur.get("modeType", 1),
+            "mOnOff": _onoff(value),
+            "mLevel": cur.get("level", cur.get("mLevel", 50)),
+        }
+        return _build_payload(mac, uid, "light", obj)
 
-    domain, module_key, param_key, converter = _COMMAND_MAP[field]
-
-    try:
-        converted = converter(value)
-    except (ValueError, TypeError) as e:
-        logger.warning("Invalid value %r for %s: %s", value, field, e)
-        return None
-
-    if field in _RANGES:
-        lo, hi = _RANGES[field]
-        if not (lo <= converted <= hi):
-            logger.warning("Value %s out of range [%s, %s] for %s", converted, lo, hi, field)
+    if field == "light_1_brightness":
+        try:
+            level = max(0, min(100, int(value)))
+        except ValueError:
             return None
+        cur = state.get("light", {})
+        obj = {
+            "modeType": cur.get("modeType", 1),
+            "mOnOff": cur.get("on", cur.get("mOnOff", 1)),
+            "mLevel": level,
+        }
+        return _build_payload(mac, uid, "light", obj)
 
-    return {
-        "method": "setConfigField",
-        "params": {"keyPath": [domain, module_key], module_key: {param_key: converted}},
-        "pid": mac,
-        "msgId": int(time.time() * 1000),
-        "uid": uid,
-        "UTC": now,
-    }
+    # ── Blower ────────────────────────────────────────────────────────────────
+    if field == "blower_on":
+        cur = state.get("blower", {})
+        obj = {
+            "modeType": cur.get("modeType", 0),
+            "mOnOff": _onoff(value),
+            "mLevel": cur.get("level", cur.get("mLevel", 50)),
+            "minSpeed": cur.get("minSpeed", 0),
+            "maxSpeed": cur.get("maxSpeed", 0),
+            "closeCO2": cur.get("closeCO2", 0),
+        }
+        return _build_payload(mac, uid, "blower", obj)
+
+    if field == "blower_speed":
+        try:
+            level = max(0, min(100, int(value)))
+        except ValueError:
+            return None
+        cur = state.get("blower", {})
+        obj = {
+            "modeType": cur.get("modeType", 0),
+            "mOnOff": cur.get("on", cur.get("mOnOff", 1)),
+            "mLevel": level,
+            "minSpeed": cur.get("minSpeed", 0),
+            "maxSpeed": cur.get("maxSpeed", 0),
+            "closeCO2": cur.get("closeCO2", 0),
+        }
+        return _build_payload(mac, uid, "blower", obj)
+
+    # ── Fan ───────────────────────────────────────────────────────────────────
+    if field == "fan_on":
+        cur = state.get("fan", {})
+        obj = {
+            "modeType": cur.get("modeType", 0),
+            "mOnOff": _onoff(value),
+            "mLevel": cur.get("level", cur.get("mLevel", 5)),
+            "minSpeed": cur.get("minSpeed", 0),
+            "maxSpeed": cur.get("maxSpeed", 0),
+            "shakeLevel": cur.get("shakeLevel", 0),
+            "natural": cur.get("natural", 0),
+        }
+        return _build_payload(mac, uid, "fan", obj)
+
+    if field == "fan_speed":
+        try:
+            level = max(0, min(10, int(value)))
+        except ValueError:
+            return None
+        cur = state.get("fan", {})
+        obj = {
+            "modeType": cur.get("modeType", 0),
+            "mOnOff": cur.get("on", cur.get("mOnOff", 1)),
+            "mLevel": level,
+            "minSpeed": cur.get("minSpeed", 0),
+            "maxSpeed": cur.get("maxSpeed", 0),
+            "shakeLevel": cur.get("shakeLevel", 0),
+            "natural": cur.get("natural", 0),
+        }
+        return _build_payload(mac, uid, "fan", obj)
+
+    # ── Climate accessories ───────────────────────────────────────────────────
+    if field in ("heater", "humidifier", "dehumidifier"):
+        cur = state.get(field, {})
+        obj = {
+            "modeType": cur.get("modeType", 0),
+            "mOnOff": _onoff(value),
+            "mLevel": cur.get("level", cur.get("mLevel", 0)),
+        }
+        return _build_payload(mac, uid, field, obj)
+
+    logger.warning("Unknown command field: %s", field)
+    return None
