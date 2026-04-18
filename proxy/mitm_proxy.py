@@ -276,10 +276,9 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
     except Exception:
         return
     method = data.get("method")
+    logger.info("METHOD: %s | FAN: %s", method, data.get("data", {}).get("fan"))
     if method != "getDevSta":
         return
-
-    logger.info("FAN: %s", data.get("data", {}).get("fan"))
 
     # Publish discovery for newly seen soil sensor IDs
     seen = known_soil_ids.setdefault(session.device_id, set())
