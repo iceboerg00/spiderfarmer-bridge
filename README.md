@@ -46,6 +46,11 @@ The installer will:
 - Wi-Fi interface (wlan0) used as hotspot for the GGS Controller
 - Home Assistant on another device in the local network
 
+> **Important:** SpiderBridge and the hotspot must run on the **same device** (the Pi).
+> The Pi connects to your home network via Ethernet (eth0), opens a Wi-Fi hotspot on wlan0,
+> and the GGS Controller connects to that hotspot — not to your regular home Wi-Fi.
+> This is what allows the Pi to intercept the controller's MQTT traffic.
+
 ---
 
 ## First Connection
