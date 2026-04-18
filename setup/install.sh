@@ -57,14 +57,15 @@ fi
 
 # 6. systemd services
 echo "[install] Installing systemd services..."
-sed "s|/opt/spiderfarmer-bridge|$INSTALL_DIR|g" \
-  "$INSTALL_DIR/systemd/sf-proxy.service" \
-  > /etc/systemd/system/sf-proxy.service
-sed "s|/opt/spiderfarmer-bridge|$INSTALL_DIR|g" \
-  "$INSTALL_DIR/systemd/sf-discovery.service" \
-  > /etc/systemd/system/sf-discovery.service
+for svc in sf-proxy sf-discovery sf-update; do
+  sed "s|/opt/spiderfarmer-bridge|$INSTALL_DIR|g" \
+    "$INSTALL_DIR/systemd/${svc}.service" \
+    > "/etc/systemd/system/${svc}.service"
+done
+cp "$INSTALL_DIR/systemd/sf-update.timer" /etc/systemd/system/sf-update.timer
+chmod +x "$INSTALL_DIR/update.sh"
 systemctl daemon-reload
-systemctl enable sf-proxy sf-discovery
+systemctl enable sf-proxy sf-discovery sf-update.timer
 echo "[install] Services installed"
 
 # 7. Hotspot
