@@ -221,7 +221,6 @@ class MITMProxy:
                         pass
 
             async def relay_down():
-                buf = b""
                 try:
                     while True:
                         try:
@@ -230,12 +229,6 @@ class MITMProxy:
                             break
                         if not data:
                             break
-                        buf += data
-                        pkts, buf = parse_packets(buf)
-                        for p in pkts:
-                            if p.packet_type == MQTT_PUBLISH and p.topic:
-                                logger.info("DOWN topic=%s payload=%s", p.topic,
-                                            p.message[:80] if p.message else None)
                         try:
                             client_writer.write(data)
                             await client_writer.drain()
@@ -291,6 +284,11 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
     method = data.get("method")
     if method != "getDevSta":
         return
+
+    # Keep UID up to date from controller messages
+    uid = data.get("uid", "")
+    if uid and session.uid != uid:
+        session.uid = uid
 
     # Publish discovery for newly seen soil sensor IDs
     seen = known_soil_ids.setdefault(session.device_id, set())

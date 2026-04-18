@@ -72,6 +72,7 @@ def _light(device_id: str, name: str, cfg: dict) -> Tuple[str, dict]:
         "brightness_state_topic": f"spiderfarmer/{device_id}/state/light_1_brightness",
         "brightness_command_topic": f"spiderfarmer/{device_id}/command/light_1_brightness/set",
         "brightness_scale": 100,
+        "on_command_type": "first",
         "payload_on": "ON",
         "payload_off": "OFF",
         "availability_topic": f"spiderfarmer/{device_id}/availability",
