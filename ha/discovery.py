@@ -134,9 +134,9 @@ def publish_discovery_for_device(
 
     # ── Soil sensors (average) ────────────────────────────────────────────────
     entities += [
-        _sensor(device_id, "temp_soil", "Soil 00 Avg Temperature", "°C",    "temperature", device_cfg),
-        _sensor(device_id, "humi_soil", "Soil 00 Avg Humidity",    "%",     "humidity",    device_cfg),
-        _sensor(device_id, "ec_soil",   "Soil 00 Avg EC",          "mS/cm", None,          device_cfg),
+        _sensor(device_id, "temp_soil", "Soil Avg Temperature", "°C",    "temperature", device_cfg),
+        _sensor(device_id, "humi_soil", "Soil Avg Humidity",    "%",     "humidity",    device_cfg),
+        _sensor(device_id, "ec_soil",   "Soil Avg EC",          "mS/cm", None,          device_cfg),
     ]
 
     # Individual soil sensors published dynamically by proxy on first detection
@@ -165,9 +165,9 @@ def publish_soil_sensor_discovery(
     short_id = sensor_id[-8:].upper()
     dev = _device_info(device_id, device_cfg)
     for sf, name, unit, dc in [
-        ("temp", f"Soil {short_id} Temperature", "°C",    "temperature"),
-        ("humi", f"Soil {short_id} Humidity",    "%",     "humidity"),
-        ("ec",   f"Soil {short_id} EC",          "mS/cm", None),
+        ("temp", f"Soil Sensor {short_id} Temperature", "°C",    "temperature"),
+        ("humi", f"Soil Sensor {short_id} Humidity",    "%",     "humidity"),
+        ("ec",   f"Soil Sensor {short_id} EC",          "mS/cm", None),
     ]:
         uid = f"spiderfarmer_{device_id}_soil_{sensor_id}_{sf}"
         payload: dict = {
