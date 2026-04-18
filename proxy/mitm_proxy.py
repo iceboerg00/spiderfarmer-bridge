@@ -290,6 +290,8 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
     if method != "getDevSta":
         return
 
+    logger.info("DEVSTA: %s", json.dumps(data.get("data", {}), ensure_ascii=False))
+
     # Keep UID up to date from controller messages
     uid = data.get("uid", "")
     if uid and session.uid != uid:
