@@ -62,6 +62,7 @@ if ! command -v pm2 &>/dev/null; then
   npm install -g pm2 --quiet
 fi
 chmod +x "$INSTALL_DIR/update.sh" "$INSTALL_DIR/start.sh" "$INSTALL_DIR/stop.sh"
+pm2 delete sf-proxy sf-discovery 2>/dev/null || true
 pm2 start "$INSTALL_DIR/ecosystem.config.js"
 pm2 startup systemd -u root --hp /root | tail -1 | bash
 pm2 save
