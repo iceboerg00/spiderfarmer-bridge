@@ -279,6 +279,8 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
     if method != "getDevSta":
         return
 
+    logger.info("FAN: %s", data.get("data", {}).get("fan"))
+
     # Publish discovery for newly seen soil sensor IDs
     seen = known_soil_ids.setdefault(session.device_id, set())
     for s in data.get("data", {}).get("sensors", []):
