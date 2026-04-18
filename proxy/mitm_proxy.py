@@ -30,22 +30,27 @@ class ProxySession:
         self.uid = uid
         self.mqtt_client = mqtt_client
         self._upstream_writer: Optional[asyncio.StreamWriter] = None
+        self._client_writer: Optional[asyncio.StreamWriter] = None
 
     def set_upstream(self, writer: asyncio.StreamWriter) -> None:
         self._upstream_writer = writer
 
+    def set_client(self, writer: asyncio.StreamWriter) -> None:
+        self._client_writer = writer
+
     async def inject(self, payload: dict) -> None:
-        """Inject a command PUBLISH into the upstream connection."""
-        if self._upstream_writer is None:
-            logger.warning("[%s] inject: no upstream", self.device_id)
+        """Inject a command PUBLISH directly into the device connection."""
+        if self._client_writer is None:
+            logger.warning("[%s] inject: no client connection", self.device_id)
             return
         raw = build_publish(
-            topic=f"ggs/cmd/{self.mac}/cmd",
+            topic=f"SF/GGS/CB/API/DOWN/{self.mac.upper().replace(':', '')}",
             message=json.dumps(payload).encode(),
         )
         try:
-            self._upstream_writer.write(raw)
-            await self._upstream_writer.drain()
+            self._client_writer.write(raw)
+            await self._client_writer.drain()
+            logger.info("[%s] Command injected: %s", self.device_id, payload.get("method"))
         except Exception as e:
             logger.error("[%s] inject error: %s", self.device_id, e)
 
@@ -177,6 +182,7 @@ class MITMProxy:
                 else:
                     s = ProxySession(dev["id"], dev["mac"], dev.get("uid", ""), self.mqtt_client)
                 s.set_upstream(upstream_writer)
+                s.set_client(client_writer)
                 self._sessions[s.device_id] = s
                 s.publish_availability("online")
                 logger.info("Session erstellt: device_id=%s mac=%s", s.device_id, s.mac)

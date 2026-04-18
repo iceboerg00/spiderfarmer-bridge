@@ -5,21 +5,26 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # (domain, module_key, param_key, converter)
+def _onoff(v: str) -> int:
+    return 1 if str(v).upper() in ("ON", "1", "TRUE") else 0
+
+
 _COMMAND_MAP = {
+    "light_on":           ("device", "light",        "mOnOff", _onoff),
+    "light_1_brightness": ("device", "light",        "mLevel", int),
+    "blower_on":          ("device", "blower",       "mOnOff", _onoff),
     "blower_speed":       ("device", "blower",       "mLevel", int),
+    "fan_on":             ("device", "fan",           "mOnOff", _onoff),
     "fan_speed":          ("device", "fan",           "mLevel", int),
-    "light_1_brightness": ("device", "light",         "mLevel", int),
-    "light_2_brightness": ("device", "light2",        "mLevel", int),
-    "heater":             ("device", "heater",        "mOnOff", lambda v: 1 if str(v).upper() in ("ON", "1") else 0),
-    "humidifier":         ("device", "humidifier",   "mOnOff", lambda v: 1 if str(v).upper() in ("ON", "1") else 0),
-    "dehumidifier":       ("device", "dehumidifier", "mOnOff", lambda v: 1 if str(v).upper() in ("ON", "1") else 0),
+    "heater":             ("device", "heater",        "mOnOff", _onoff),
+    "humidifier":         ("device", "humidifier",   "mOnOff", _onoff),
+    "dehumidifier":       ("device", "dehumidifier", "mOnOff", _onoff),
 }
 
 _RANGES = {
-    "blower_speed":       (0, 10),
+    "blower_speed":       (0, 100),
     "fan_speed":          (0, 10),
     "light_1_brightness": (0, 100),
-    "light_2_brightness": (0, 100),
 }
 
 
