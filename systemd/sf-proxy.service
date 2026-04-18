@@ -1,0 +1,19 @@
+[Unit]
+Description=Spider Farmer Bridge — MITM Proxy
+After=network-online.target mosquitto.service
+Wants=network-online.target
+Requires=mosquitto.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/spiderfarmer-bridge
+ExecStart=/opt/spiderfarmer-bridge/.venv/bin/python3 main_proxy.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sf-proxy
+
+[Install]
+WantedBy=multi-user.target

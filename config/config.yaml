@@ -1,0 +1,28 @@
+hotspot:
+  ssid: "SF-Bridge"
+  password: "changeme123"
+  interface: "wlan0"
+  ip: "192.168.10.1"
+  channel: 6
+
+proxy:
+  listen_host: "0.0.0.0"
+  listen_port: 8883
+  upstream_host: "sf.mqtt.spider-farmer.com"
+  upstream_port: 8883
+  cert_file: "certs/server.crt"
+  key_file: "certs/server.key"
+
+mosquitto:
+  host: "127.0.0.1"
+  port: 1883
+  local_user: "bridge"
+  local_password: "bridge_secret"  # Change before deployment
+  ha_mqtt_password: "ha_secret"    # Change before deployment — HA uses this to connect
+
+devices:
+  - mac: "AABBCCDDEEFF"   # Replace with actual MAC (no colons)
+    type: "CB"
+    id: "ggs_1"
+    uid: ""               # Fill after observing first CONNECT packet
+    friendly_name: "Spider Farmer GGS"

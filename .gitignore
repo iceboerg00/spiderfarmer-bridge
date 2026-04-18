@@ -1,0 +1,20 @@
+certs/*.key.bak
+certs/*.csr
+certs/*.srl
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+.venv/
+.pytest_cache/
+dist/
+build/
+*.log
+
+# Internal / Claude Code
+.claude/
+anweisung.md
+docs/superpowers/
+PLAN.md
+STATE.md
+TODO.md
