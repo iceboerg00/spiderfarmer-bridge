@@ -104,36 +104,37 @@ def publish_discovery_for_device(
 ) -> None:
     entities = []
 
+    # Prefixes ensure alphabetical sort matches desired display order:
+    # Air → Light → Fan → Soil Avg → Soil Sensors → Switch → Outlet
+
     # ── Air sensors ───────────────────────────────────────────────────────────
     entities += [
-        _sensor(device_id, "temperature", "Temperature", "°C",  "temperature", device_cfg),
-        _sensor(device_id, "humidity",    "Humidity",    "%",   "humidity",    device_cfg),
-        _sensor(device_id, "vpd",         "VPD",         "kPa", None,          device_cfg),
+        _sensor(device_id, "temperature", "Air Temperature", "°C",  "temperature", device_cfg),
+        _sensor(device_id, "humidity",    "Air Humidity",    "%",   "humidity",    device_cfg),
+        _sensor(device_id, "vpd",         "Air VPD",         "kPa", None,          device_cfg),
     ]
-
-    # ── Soil sensors (average) ────────────────────────────────────────────────
-    entities += [
-        _sensor(device_id, "temp_soil", "Soil Temperature (avg)", "°C",    "temperature", device_cfg),
-        _sensor(device_id, "humi_soil", "Soil Humidity (avg)",    "%",     "humidity",    device_cfg),
-        _sensor(device_id, "ec_soil",   "Soil EC (avg)",          "mS/cm", None,          device_cfg),
-    ]
-
-    # Individual soil sensors published dynamically by proxy on first detection
 
     # ── Light ─────────────────────────────────────────────────────────────────
     entities.append(_light(device_id, "Light", device_cfg))
 
-    # ── Exhaust fan ───────────────────────────────────────────────────────────
-    entities.append(_fan(device_id, "blower_on", "blower_speed", "Exhaust Fan", 100, device_cfg))
+    # ── Fans ──────────────────────────────────────────────────────────────────
+    entities.append(_fan(device_id, "blower_on", "blower_speed", "Fan Exhaust",     100, device_cfg))
+    entities.append(_fan(device_id, "fan_on",    "fan_speed",    "Fan Circulation", 10,  device_cfg))
 
-    # ── Circulation fan ───────────────────────────────────────────────────────
-    entities.append(_fan(device_id, "fan_on", "fan_speed", "Circulation Fan", 10, device_cfg))
+    # ── Soil sensors (average) ────────────────────────────────────────────────
+    entities += [
+        _sensor(device_id, "temp_soil", "Soil Avg Temperature", "°C",    "temperature", device_cfg),
+        _sensor(device_id, "humi_soil", "Soil Avg Humidity",    "%",     "humidity",    device_cfg),
+        _sensor(device_id, "ec_soil",   "Soil Avg EC",          "mS/cm", None,          device_cfg),
+    ]
+
+    # Individual soil sensors published dynamically by proxy on first detection
 
     # ── Accessories ───────────────────────────────────────────────────────────
     entities += [
-        _switch(device_id, "heater",       "Heater",       device_cfg),
-        _switch(device_id, "humidifier",   "Humidifier",   device_cfg),
-        _switch(device_id, "dehumidifier", "Dehumidifier", device_cfg),
+        _switch(device_id, "heater",       "Switch Heater",       device_cfg),
+        _switch(device_id, "humidifier",   "Switch Humidifier",   device_cfg),
+        _switch(device_id, "dehumidifier", "Switch Dehumidifier", device_cfg),
     ]
 
     # ── Outlets ───────────────────────────────────────────────────────────────
@@ -153,9 +154,9 @@ def publish_soil_sensor_discovery(
     short_id = sensor_id[-8:].upper()
     dev = _device_info(device_id, device_cfg)
     for sf, name, unit, dc in [
-        ("temp", f"Soil Sensor {short_id} Temperature", "°C",    "temperature"),
-        ("humi", f"Soil Sensor {short_id} Humidity",    "%",     "humidity"),
-        ("ec",   f"Soil Sensor {short_id} EC",          "mS/cm", None),
+        ("temp", f"Soil {short_id} Temperature", "°C",    "temperature"),
+        ("humi", f"Soil {short_id} Humidity",    "%",     "humidity"),
+        ("ec",   f"Soil {short_id} EC",          "mS/cm", None),
     ]:
         uid = f"spiderfarmer_{device_id}_soil_{sensor_id}_{sf}"
         payload: dict = {
