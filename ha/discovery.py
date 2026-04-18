@@ -151,7 +151,7 @@ def publish_discovery_for_device(
     ]
 
     # ── Outlets ───────────────────────────────────────────────────────────────
-    num_outlets = device_cfg.get("outlets", 4)
+    num_outlets = device_cfg.get("outlets", 10)
     for i in range(1, num_outlets + 1):
         entities.append(_switch(device_id, f"outlet_{i}", f"Outlet {i}", device_cfg))
 
