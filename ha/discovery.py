@@ -134,9 +134,9 @@ def publish_discovery_for_device(
 
     # ── Soil sensors (average) ────────────────────────────────────────────────
     entities += [
-        _sensor(device_id, "temp_soil", "Soil Avg Temperature", "°C",    "temperature", device_cfg),
-        _sensor(device_id, "humi_soil", "Soil Avg Humidity",    "%",     "humidity",    device_cfg),
-        _sensor(device_id, "ec_soil",   "Soil Avg EC",          "mS/cm", None,          device_cfg),
+        _sensor(device_id, "temp_soil", "Soil 00 Avg Temperature", "°C",    "temperature", device_cfg),
+        _sensor(device_id, "humi_soil", "Soil 00 Avg Humidity",    "%",     "humidity",    device_cfg),
+        _sensor(device_id, "ec_soil",   "Soil 00 Avg EC",          "mS/cm", None,          device_cfg),
     ]
 
     # Individual soil sensors published dynamically by proxy on first detection
