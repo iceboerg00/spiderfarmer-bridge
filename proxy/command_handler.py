@@ -5,6 +5,8 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+_TIME_PERIOD = [{"weekmask": 127}]
+
 
 def _onoff(v) -> int:
     return 1 if str(v).upper() in ("ON", "1", "TRUE") else 0
@@ -13,8 +15,8 @@ def _onoff(v) -> int:
 def _build(mac: str, uid: str, domain: str, module: str, obj: dict) -> dict:
     return {
         "method": "setConfigField",
-        "params": {"keyPath": [domain, module], module: obj},
         "pid": mac,
+        "params": {"keyPath": [domain, module], module: obj},
         "msgId": str(int(time.time() * 1000)),
         "uid": uid,
         "UTC": int(time.time()),
@@ -35,11 +37,9 @@ def translate_command(
     # ── Outlet ────────────────────────────────────────────────────────────────
     if outlet_num is not None:
         ok = f"O{outlet_num}"
-        cur = state.get("outlet", {}).get(ok, {})
-        return _build(mac, uid, "outlet", ok,
-                      {**cur, "modeType": cur.get("modeType", 0), "mOnOff": _onoff(value)})
+        return _build(mac, uid, "outlet", ok, {"modeType": 0, "mOnOff": _onoff(value)})
 
-    # ── Light / Light2 (JSON schema) ──────────────────────────────────────────
+    # ── Light / Light2 ────────────────────────────────────────────────────────
     _EFFECT_TO_MODE = {"Manual / Timer": 1, "PPFD": 12}
     if field in ("light", "light2"):
         cur = state.get(field, {})
@@ -56,18 +56,17 @@ def translate_command(
             "modeType": mode,
             "mOnOff": on,
             "mLevel": level,
+            "timePeriod": _TIME_PERIOD,
         })
 
     # ── Blower on/off ─────────────────────────────────────────────────────────
     if field == "blower" and subfield is None:
         cur = state.get("blower", {})
         return _build(mac, uid, "device", "blower", {
-            "modeType": cur.get("modeType", 0),
             "mOnOff": _onoff(value),
             "mLevel": cur.get("level", cur.get("mLevel", 50)),
-            "minSpeed": cur.get("minSpeed", 0),
-            "maxSpeed": cur.get("maxSpeed", 0),
-            "closeCO2": cur.get("closeCO2", 0),
+            "natural": 0,
+            "timePeriod": _TIME_PERIOD,
         })
 
     # ── Blower percentage ─────────────────────────────────────────────────────
@@ -78,25 +77,21 @@ def translate_command(
             return None
         cur = state.get("blower", {})
         return _build(mac, uid, "device", "blower", {
-            "modeType": cur.get("modeType", 0),
             "mOnOff": cur.get("on", cur.get("mOnOff", 1)),
             "mLevel": level,
-            "minSpeed": cur.get("minSpeed", 0),
-            "maxSpeed": cur.get("maxSpeed", 0),
-            "closeCO2": cur.get("closeCO2", 0),
+            "natural": 0,
+            "timePeriod": _TIME_PERIOD,
         })
 
     # ── Fan on/off ────────────────────────────────────────────────────────────
     if field == "fan" and subfield is None:
         cur = state.get("fan", {})
         return _build(mac, uid, "device", "fan", {
-            "modeType": cur.get("modeType", 0),
             "mOnOff": _onoff(value),
             "mLevel": cur.get("level", cur.get("mLevel", 5)),
-            "minSpeed": cur.get("minSpeed", 0),
-            "maxSpeed": cur.get("maxSpeed", 0),
             "shakeLevel": cur.get("shakeLevel", 0),
-            "natural": cur.get("natural", 0),
+            "natural": 0,
+            "timePeriod": _TIME_PERIOD,
         })
 
     # ── Fan percentage ────────────────────────────────────────────────────────
@@ -107,16 +102,14 @@ def translate_command(
             return None
         cur = state.get("fan", {})
         return _build(mac, uid, "device", "fan", {
-            "modeType": cur.get("modeType", 0),
             "mOnOff": cur.get("on", cur.get("mOnOff", 1)),
             "mLevel": level,
-            "minSpeed": cur.get("minSpeed", 0),
-            "maxSpeed": cur.get("maxSpeed", 0),
             "shakeLevel": cur.get("shakeLevel", 0),
-            "natural": cur.get("natural", 0),
+            "natural": 0,
+            "timePeriod": _TIME_PERIOD,
         })
 
-    # ── Fan shake level (0-10) ────────────────────────────────────────────────
+    # ── Fan shake level ───────────────────────────────────────────────────────
     if field == "fan_shake":
         try:
             shake = max(0, min(10, int(value)))
@@ -124,36 +117,32 @@ def translate_command(
             return None
         cur = state.get("fan", {})
         return _build(mac, uid, "device", "fan", {
-            "modeType": cur.get("modeType", 0),
             "mOnOff": cur.get("on", cur.get("mOnOff", 1)),
             "mLevel": cur.get("level", cur.get("mLevel", 5)),
-            "minSpeed": cur.get("minSpeed", 0),
-            "maxSpeed": cur.get("maxSpeed", 0),
             "shakeLevel": shake,
-            "natural": cur.get("natural", 0),
+            "natural": 0,
+            "timePeriod": _TIME_PERIOD,
         })
 
-    # ── Fan oscillation ───────────────────────────────────────────────────────
+    # ── Fan oscillation (on/off toggle) ───────────────────────────────────────
     if field == "fan" and subfield == "oscillation":
         shake = 1 if value == "oscillate_on" else 0
         cur = state.get("fan", {})
         return _build(mac, uid, "device", "fan", {
-            "modeType": cur.get("modeType", 0),
             "mOnOff": cur.get("on", cur.get("mOnOff", 1)),
             "mLevel": cur.get("level", cur.get("mLevel", 5)),
-            "minSpeed": cur.get("minSpeed", 0),
-            "maxSpeed": cur.get("maxSpeed", 0),
             "shakeLevel": shake,
-            "natural": cur.get("natural", 0),
+            "natural": 0,
+            "timePeriod": _TIME_PERIOD,
         })
 
     # ── Climate accessories ───────────────────────────────────────────────────
     if field in ("heater", "humidifier", "dehumidifier"):
         cur = state.get(field, {})
         return _build(mac, uid, "device", field, {
-            "modeType": cur.get("modeType", 0),
             "mOnOff": _onoff(value),
             "mLevel": cur.get("level", cur.get("mLevel", 0)),
+            "timePeriod": _TIME_PERIOD,
         })
 
     logger.warning("Unknown command field: %s subfield: %s", field, subfield)
