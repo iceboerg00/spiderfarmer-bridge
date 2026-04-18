@@ -23,9 +23,10 @@ def _sensor(device_id: str, field: str, name: str, unit: str, device_class: str 
         "unique_id": uid,
         "state_topic": f"spiderfarmer/{device_id}/state/{field}",
         "availability_topic": f"spiderfarmer/{device_id}/availability",
-        "unit_of_measurement": unit,
         "device": _device_info(device_id, cfg),
     }
+    if unit:
+        payload["unit_of_measurement"] = unit
     if device_class:
         payload["device_class"] = device_class
     return f"homeassistant/sensor/{uid}/config", payload
@@ -127,6 +128,7 @@ def publish_discovery_for_device(
 
     # ── Light ─────────────────────────────────────────────────────────────────
     entities.append(_light(device_id, "Light", device_cfg))
+    entities.append(_sensor(device_id, "light_mode", "Light Mode", None, None, device_cfg))
 
     # ── Fans ──────────────────────────────────────────────────────────────────
     entities.append(_fan(device_id, "blower", "Fan Exhaust",     100, device_cfg))

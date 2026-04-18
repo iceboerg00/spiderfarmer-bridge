@@ -29,12 +29,15 @@ def normalize_status(device_id: str, data: Dict[str, Any]) -> Dict[str, str]:
             result[f"spiderfarmer/{device_id}/state/{norm_key}"] = str(sensor[sf_key])
 
     # ── Light (JSON schema) ───────────────────────────────────────────────────
+    _LIGHT_MODES = {0: "Auto", 1: "Manual", 2: "Timer", 3: "Sunrise/Sunset"}
     light = d.get("light", {})
     if light:
         result[f"spiderfarmer/{device_id}/state/light"] = json.dumps({
             "state": _on_off(light.get("on", light.get("mOnOff", 0))),
             "brightness": light.get("level", light.get("mLevel", 0)),
         })
+        mode = light.get("modeType", 1)
+        result[f"spiderfarmer/{device_id}/state/light_mode"] = _LIGHT_MODES.get(mode, str(mode))
 
     # ── Blower (JSON state) ───────────────────────────────────────────────────
     blower = d.get("blower", {})
