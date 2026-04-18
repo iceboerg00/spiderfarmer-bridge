@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import signal
 import sys
 
 import paho.mqtt.client as mqtt
@@ -33,7 +34,7 @@ def main() -> None:
             loop,
         )
 
-    mq.subscribe("spiderfarmer/+/command/#")  # matches all command subtopics
+    mq.subscribe("spiderfarmer/+/command/#")
     mq.on_message = on_command
 
     server_ssl_ctx = proxy.build_server_ssl_ctx()
@@ -46,14 +47,18 @@ def main() -> None:
             port=pcfg["listen_port"],
             ssl=server_ssl_ctx,
         )
+        stop = asyncio.Event()
+        loop = asyncio.get_event_loop()
+        loop.add_signal_handler(signal.SIGTERM, stop.set)
+        loop.add_signal_handler(signal.SIGINT, stop.set)
+
         logger.info("Proxy listening on %s:%s", pcfg["listen_host"], pcfg["listen_port"])
         async with server:
-            await server.serve_forever()
+            await stop.wait()
+        logger.info("Shutting down")
 
     try:
         loop.run_until_complete(run())
-    except KeyboardInterrupt:
-        logger.info("Shutting down")
     finally:
         mq.loop_stop()
         mq.disconnect()
