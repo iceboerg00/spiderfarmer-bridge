@@ -28,16 +28,25 @@ def normalize_status(device_id: str, data: Dict[str, Any]) -> Dict[str, str]:
         if sf_key in sensor:
             result[f"spiderfarmer/{device_id}/state/{norm_key}"] = str(sensor[sf_key])
 
-    # ── Light (JSON schema) ───────────────────────────────────────────────────
+    # ── Light (JSON schema with effect for mode) ──────────────────────────────
     _LIGHT_MODES = {1: "Manual / Timer", 12: "PPFD"}
     light = d.get("light", {})
     if light:
+        mode = light.get("modeType", 1)
         result[f"spiderfarmer/{device_id}/state/light"] = json.dumps({
             "state": _on_off(light.get("on", light.get("mOnOff", 0))),
             "brightness": light.get("level", light.get("mLevel", 0)),
+            "effect": _LIGHT_MODES.get(mode, str(mode)),
         })
-        mode = light.get("modeType", 1)
-        result[f"spiderfarmer/{device_id}/state/light_mode"] = _LIGHT_MODES.get(mode, str(mode))
+
+    light2 = d.get("light2", {})
+    if light2:
+        mode2 = light2.get("modeType", 1)
+        result[f"spiderfarmer/{device_id}/state/light2"] = json.dumps({
+            "state": _on_off(light2.get("on", light2.get("mOnOff", 0))),
+            "brightness": light2.get("level", light2.get("mLevel", 0)),
+            "effect": _LIGHT_MODES.get(mode2, str(mode2)),
+        })
 
     # ── Blower (JSON state) ───────────────────────────────────────────────────
     blower = d.get("blower", {})

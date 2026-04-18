@@ -63,17 +63,19 @@ def _switch(device_id: str, field: str, name: str, cfg: dict) -> Tuple[str, dict
     return f"homeassistant/switch/{uid}/config", payload
 
 
-def _light(device_id: str, name: str, cfg: dict) -> Tuple[str, dict]:
-    uid = f"spiderfarmer_{device_id}_light"
+def _light(device_id: str, module: str, name: str, cfg: dict) -> Tuple[str, dict]:
+    uid = f"spiderfarmer_{device_id}_{module}"
     base = f"spiderfarmer/{device_id}"
     payload = {
         "name": name,
         "unique_id": uid,
         "schema": "json",
-        "state_topic": f"{base}/state/light",
-        "command_topic": f"{base}/command/light/set",
+        "state_topic": f"{base}/state/{module}",
+        "command_topic": f"{base}/command/{module}/set",
         "brightness": True,
         "brightness_scale": 100,
+        "effect": True,
+        "effect_list": ["Manual / Timer", "PPFD"],
         "availability_topic": f"{base}/availability",
         "device": _device_info(device_id, cfg),
     }
@@ -103,7 +105,7 @@ def _fan(device_id: str, module: str, name: str, speed_max: int, cfg: dict,
     if oscillation:
         payload.update({
             "oscillation_state_topic": f"{base}/state/{module}",
-            "oscillation_value_template": "{{ value_json.oscillating }}",
+            "oscillation_value_template": "{{ 'oscillate_on' if value_json.oscillating else 'oscillate_off' }}",
             "oscillation_command_topic": f"{base}/command/{module}/oscillation/set",
             "payload_oscillation_on": "oscillate_on",
             "payload_oscillation_off": "oscillate_off",
@@ -127,8 +129,8 @@ def publish_discovery_for_device(
     ]
 
     # ── Light ─────────────────────────────────────────────────────────────────
-    entities.append(_light(device_id, "Light", device_cfg))
-    entities.append(_sensor(device_id, "light_mode", "Light Mode", None, None, device_cfg))
+    entities.append(_light(device_id, "light",  "Light 1", device_cfg))
+    entities.append(_light(device_id, "light2", "Light 2", device_cfg))
 
     # ── Fans ──────────────────────────────────────────────────────────────────
     entities.append(_fan(device_id, "blower", "Fan Exhaust",     100, device_cfg))

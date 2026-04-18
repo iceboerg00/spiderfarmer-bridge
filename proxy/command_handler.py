@@ -39,19 +39,21 @@ def translate_command(
         return _build(mac, uid, "outlet", ok,
                       {**cur, "modeType": cur.get("modeType", 0), "mOnOff": _onoff(value)})
 
-    # ── Light (JSON schema: value is JSON {"state":"ON","brightness":50}) ─────
-    if field == "light":
-        cur = state.get("light", {})
+    # ── Light / Light2 (JSON schema) ──────────────────────────────────────────
+    _EFFECT_TO_MODE = {"Manual / Timer": 1, "PPFD": 12}
+    if field in ("light", "light2"):
+        cur = state.get(field, {})
         try:
             cmd = json.loads(value)
         except (ValueError, TypeError):
             cmd = {"state": value}
         on = _onoff(cmd.get("state", "ON"))
-        # HA sends brightness 0-255 scaled; our brightness_scale=100 so it's 0-100
         level = int(cmd.get("brightness", cur.get("level", cur.get("mLevel", 50))))
         level = max(0, min(100, level))
-        return _build(mac, uid, "device", "light", {
-            "modeType": cur.get("modeType", 1),
+        effect = cmd.get("effect")
+        mode = _EFFECT_TO_MODE.get(effect, cur.get("modeType", 1)) if effect else cur.get("modeType", 1)
+        return _build(mac, uid, "device", field, {
+            "modeType": mode,
             "mOnOff": on,
             "mLevel": level,
         })
