@@ -134,7 +134,8 @@ def publish_discovery_for_device(
 
     # ── Fans ──────────────────────────────────────────────────────────────────
     entities.append(_fan(device_id, "blower", "Fan Exhaust",     100, device_cfg))
-    entities.append(_fan(device_id, "fan",    "Fan Circulation", 10,  device_cfg, oscillation=True))
+    entities.append(_fan(device_id, "fan", "Fan Circulation", 10, device_cfg, oscillation=True))
+    entities.append(_number(device_id, "fan_shake", "Fan Shake Level", 0, 10, device_cfg))
 
     # ── Soil sensors (average) ────────────────────────────────────────────────
     entities += [

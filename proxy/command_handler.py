@@ -116,6 +116,23 @@ def translate_command(
             "natural": cur.get("natural", 0),
         })
 
+    # ── Fan shake level (0-10) ────────────────────────────────────────────────
+    if field == "fan_shake":
+        try:
+            shake = max(0, min(10, int(value)))
+        except ValueError:
+            return None
+        cur = state.get("fan", {})
+        return _build(mac, uid, "device", "fan", {
+            "modeType": cur.get("modeType", 0),
+            "mOnOff": cur.get("on", cur.get("mOnOff", 1)),
+            "mLevel": cur.get("level", cur.get("mLevel", 5)),
+            "minSpeed": cur.get("minSpeed", 0),
+            "maxSpeed": cur.get("maxSpeed", 0),
+            "shakeLevel": shake,
+            "natural": cur.get("natural", 0),
+        })
+
     # ── Fan oscillation ───────────────────────────────────────────────────────
     if field == "fan" and subfield == "oscillation":
         shake = 1 if value == "oscillate_on" else 0

@@ -59,11 +59,13 @@ def normalize_status(device_id: str, data: Dict[str, Any]) -> Dict[str, str]:
     # ── Fan (JSON state + oscillation) ────────────────────────────────────────
     fan = d.get("fan", {})
     if fan:
+        shake = fan.get("shakeLevel", 0)
         result[f"spiderfarmer/{device_id}/state/fan"] = json.dumps({
             "state": _on_off(fan.get("on", fan.get("mOnOff", 0))),
             "percentage": fan.get("level", fan.get("mLevel", 0)),
-            "oscillating": fan.get("shakeLevel", 0) > 0,
+            "oscillating": shake > 0,
         })
+        result[f"spiderfarmer/{device_id}/state/fan_shake"] = str(shake)
 
     # ── Accessories ───────────────────────────────────────────────────────────
     for module in ("heater", "humidifier", "dehumidifier"):
