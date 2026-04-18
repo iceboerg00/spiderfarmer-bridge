@@ -51,7 +51,7 @@ class ProxySession:
         try:
             self._client_writer.write(raw)
             await self._client_writer.drain()
-            logger.info("[%s] Command injected: %s", self.device_id, payload.get("method"))
+            logger.info("[%s] Command injected: %s", self.device_id, payload.get("params", {}))
         except Exception as e:
             logger.error("[%s] inject error: %s", self.device_id, e)
 
