@@ -19,7 +19,6 @@ def _build(mac: str, uid: str, domain: str, module: str, obj: dict) -> dict:
         "params": {"keyPath": [domain, module], module: obj},
         "msgId": str(int(time.time() * 1000)),
         "uid": uid,
-        "UTC": int(time.time()),
     }
 
 
