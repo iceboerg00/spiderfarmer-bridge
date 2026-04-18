@@ -210,7 +210,11 @@ class MITMProxy:
                                 import json as _json
                                 try:
                                     body = _json.loads(pkt.message)
-                                    logger.info("DEVICE→SERVER method=%s", body.get("method"))
+                                    method = body.get("method")
+                                    if method == "setConfigField":
+                                        logger.info("DEVICE→SERVER %s params=%s", method, str(body.get("params", {}))[:300])
+                                    else:
+                                        logger.info("DEVICE→SERVER method=%s", method)
                                 except Exception:
                                     pass
                             elif pkt.packet_type != MQTT_CONNECT:
