@@ -19,14 +19,9 @@ address=/sf.mqtt.spider-farmer.com/$IP
 EOF
 echo "[hotspot] DNS redirect configured: sf.mqtt.spider-farmer.com -> $IP"
 
-# Remove any existing AP connections (idempotent)
-while IFS= read -r name; do
-  mode=$(nmcli -g 802-11-wireless.mode con show "$name" 2>/dev/null | tr -d ' \r\n')
-  if [ "$mode" = "ap" ]; then
-    echo "[hotspot] Removing old AP connection: $name"
-    nmcli con delete "$name" 2>/dev/null || true
-  fi
-done < <(nmcli -t -f NAME,TYPE con show | grep ":wifi" | cut -d: -f1)
+# Remove existing hotspot connection
+nmcli con delete "$CON_NAME" 2>/dev/null || true
+echo "[hotspot] Old connection removed (if existed)"
 
 # Create hotspot (NM-managed dnsmasq will read DNS conf on connection start)
 nmcli con add \
