@@ -211,8 +211,8 @@ class MITMProxy:
                                 try:
                                     body = _json.loads(pkt.message)
                                     method = body.get("method")
-                                    if method == "setConfigField":
-                                        logger.info("DEVICE→SERVER %s params=%s", method, str(body.get("params", {}))[:300])
+                                    if method in ("setConfigField", "getDevSta", "getSysSta"):
+                                        logger.info("DEVICE→SERVER %s uid=%s params=%s", method, body.get("uid"), str(body.get("params", body.get("data", {})))[:200])
                                     else:
                                         logger.info("DEVICE→SERVER method=%s", method)
                                 except Exception:
