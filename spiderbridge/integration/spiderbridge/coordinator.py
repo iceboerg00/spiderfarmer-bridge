@@ -13,7 +13,14 @@ class MQTTCoordinator:
     def __init__(self, hass, device_id: str):
         self.hass = hass
         self.device_id = device_id
-        self._client = mqtt.Client(client_id=f"ha-spiderbridge-{device_id}")
+        try:
+            self._client = mqtt.Client(
+                mqtt.CallbackAPIVersion.VERSION1,
+                client_id=f"ha-spiderbridge-{device_id}",
+            )
+        except AttributeError:
+            # paho-mqtt < 2.0 fallback
+            self._client = mqtt.Client(client_id=f"ha-spiderbridge-{device_id}")
         self._listeners: dict[str, list[Callable]] = defaultdict(list)
         self._availability_listeners: list[Callable] = []
         self._soil_listeners: list[Callable] = []

@@ -3,7 +3,7 @@
   "name": "SpiderBridge",
   "version": "1.0.0",
   "documentation": "https://github.com/iceboerg00/spiderfarmer-bridge",
-  "requirements": ["paho-mqtt>=1.6.1,<2.0"],
+  "requirements": ["paho-mqtt>=1.6.1"],
   "dependencies": [],
   "codeowners": ["@iceboerg00"],
   "iot_class": "local_push",
