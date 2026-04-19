@@ -35,5 +35,5 @@ printf 'interface=%s\nbind-interfaces\ndhcp-range=%s.10,%s.50,255.255.255.0,24h\
 
 iptables -t nat -F PREROUTING 2>/dev/null || true
 iptables -t nat -A PREROUTING -i "${IFACE}" -p tcp --dport 8883 -j REDIRECT --to-ports 8883
-echo 1 > /proc/sys/net/ipv4/ip_forward
+sysctl -w net.ipv4.ip_forward=1 2>/dev/null || echo 1 > /proc/sys/net/ipv4/ip_forward 2>/dev/null || true
 echo "[INFO] Hotspot setup complete"
