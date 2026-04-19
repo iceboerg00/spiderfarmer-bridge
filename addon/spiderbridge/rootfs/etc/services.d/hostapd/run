@@ -1,0 +1,8 @@
+#!/usr/bin/with-contenv bashio
+HOTSPOT_ENABLED=$(bashio::config 'hotspot_enabled')
+if [ "${HOTSPOT_ENABLED}" != "true" ]; then
+    bashio::log.info "hostapd: disabled"
+    exec sleep infinity
+fi
+bashio::log.info "Starting hostapd"
+exec hostapd /tmp/spiderbridge/hostapd.conf

@@ -1,0 +1,8 @@
+#!/usr/bin/with-contenv bashio
+HOTSPOT_ENABLED=$(bashio::config 'hotspot_enabled')
+if [ "${HOTSPOT_ENABLED}" != "true" ]; then
+    bashio::log.info "dnsmasq: disabled"
+    exec sleep infinity
+fi
+bashio::log.info "Starting dnsmasq"
+exec dnsmasq --no-daemon -C /tmp/spiderbridge/dnsmasq.conf
