@@ -3,6 +3,21 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from unittest.mock import MagicMock, patch
+
+# --- HA stub setup (required so spiderbridge/__init__.py can be imported) ---
+_ha_stubs = {
+    'homeassistant':                         MagicMock(),
+    'homeassistant.components':              MagicMock(),
+    'homeassistant.config_entries':          MagicMock(),
+    'homeassistant.core':                    MagicMock(),
+    'homeassistant.helpers':                 MagicMock(),
+    'homeassistant.helpers.entity':          MagicMock(DeviceInfo=dict),
+    'homeassistant.helpers.entity_platform': MagicMock(),
+}
+for mod, stub in _ha_stubs.items():
+    sys.modules.setdefault(mod, stub)
+# --- end HA stub setup ---
+
 from spiderbridge.coordinator import MQTTCoordinator
 
 
