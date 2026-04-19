@@ -2,6 +2,7 @@ ARG BUILD_FROM
 FROM ${BUILD_FROM}
 
 RUN apk add --no-cache \
+    python3 py3-pip \
     hostapd \
     dnsmasq \
     mosquitto \
@@ -12,7 +13,7 @@ RUN apk add --no-cache \
     jq
 
 COPY app/requirements.txt /tmp/requirements.txt
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/requirements.txt
 
 COPY app/proxy/ /usr/share/spiderbridge/proxy/
 COPY app/ha/ /usr/share/spiderbridge/ha/
