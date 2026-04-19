@@ -16,7 +16,7 @@ from .normalizer import normalize_status
 from ha.discovery import publish_soil_sensor_discovery as _publish_soil_sensor_discovery
 from .command_handler import translate_command
 
-from proxy.config import HA_OPTIONS_PATH, HA_DEVICES_PATH
+from .config import HA_OPTIONS_PATH, HA_DEVICES_PATH
 
 logger = logging.getLogger(__name__)
 
