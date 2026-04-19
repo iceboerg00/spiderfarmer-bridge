@@ -6,6 +6,8 @@ url: https://github.com/iceboerg00/spiderfarmer-bridge
 arch:
   - aarch64
   - armv7
+startup: application
+boot: auto
 host_network: true
 privileged: true
 options:
