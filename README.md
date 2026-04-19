@@ -30,7 +30,7 @@ Everything runs directly on your Home Assistant device. No separate Pi needed.
 
 **Requirements:**
 - Raspberry Pi running HAOS with Wi-Fi (wlan0)
-- LAN cable (eth0) for internet connection
+- **LAN cable (eth0) mandatory** — the Pi must be connected to your main network via Ethernet. Wi-Fi (wlan0) is fully occupied by the hotspot for the GGS Controller and cannot be used for the home network at the same time.
 
 **Setup:**
 
@@ -71,7 +71,7 @@ SpiderBridge runs on a dedicated Raspberry Pi (any model with Wi-Fi). Home Assis
 
 **Requirements:**
 - Raspberry Pi with Raspberry Pi OS (64-bit) and Wi-Fi
-- LAN cable (eth0) for internet and HA connection
+- **LAN cable (eth0) mandatory** — same reason as Option A: wlan0 is used as a hotspot for the GGS Controller, so Ethernet is the only way to reach the internet and your Home Assistant instance
 - Home Assistant on another device in the same network
 
 **Installation:**
