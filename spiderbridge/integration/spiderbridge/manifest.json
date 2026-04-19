@@ -1,0 +1,11 @@
+{
+  "domain": "spiderbridge",
+  "name": "SpiderBridge",
+  "version": "1.0.0",
+  "documentation": "https://github.com/iceboerg00/spiderfarmer-bridge",
+  "requirements": ["paho-mqtt>=1.6.1,<2.0"],
+  "dependencies": [],
+  "codeowners": ["@iceboerg00"],
+  "iot_class": "local_push",
+  "config_flow": true
+}
