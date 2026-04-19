@@ -1,3 +1,3 @@
-#!/usr/bin/with-contenv bashio
-bashio::log.info "Starting mosquitto"
+#!/bin/sh
+echo "[INFO] Starting mosquitto"
 exec mosquitto -c /tmp/spiderbridge/mosquitto.conf

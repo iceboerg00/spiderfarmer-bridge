@@ -1,8 +1,8 @@
-#!/usr/bin/with-contenv bashio
-bashio::log.info "Waiting for mosquitto to be ready..."
+#!/bin/sh
+echo "[INFO] Waiting for mosquitto..."
 until mosquitto_pub -h 127.0.0.1 -p 1883 -t spiderbridge/probe -m '' 2>/dev/null; do
     sleep 1
 done
-bashio::log.info "Starting proxy"
+echo "[INFO] Starting proxy"
 cd /usr/share/spiderbridge
 exec python3 main_proxy.py
