@@ -4,9 +4,7 @@ from homeassistant.components.fan import FanEntity, FanEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.entity import DeviceInfo
-
-from .const import DOMAIN
+from .const import DOMAIN, device_info as _device_info
 from .coordinator import MQTTCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -44,13 +42,8 @@ class SpiderFarmerFan(FanEntity):
         self._attr_available = False
 
     @property
-    def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._coordinator.device_id)},
-            name="Spider Farmer GGS",
-            manufacturer="Spider Farmer",
-            model="GGS Controller",
-        )
+    def device_info(self):
+        return _device_info(self._coordinator.device_id)
 
     async def async_added_to_hass(self) -> None:
         self._coordinator.subscribe_state(self._field, self._on_state)

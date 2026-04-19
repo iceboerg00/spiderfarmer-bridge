@@ -1,13 +1,11 @@
 import json
 import logging
-import math
 from homeassistant.components.light import LightEntity, LightEntityFeature, ColorMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.entity import DeviceInfo
 
-from .const import DOMAIN
+from .const import DOMAIN, device_info as _device_info
 from .coordinator import MQTTCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,13 +46,8 @@ class SpiderFarmerLight(LightEntity):
         self._attr_available = False
 
     @property
-    def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._coordinator.device_id)},
-            name="Spider Farmer GGS",
-            manufacturer="Spider Farmer",
-            model="GGS Controller",
-        )
+    def device_info(self):
+        return _device_info(self._coordinator.device_id)
 
     async def async_added_to_hass(self) -> None:
         self._coordinator.subscribe_state(self._field, self._on_state)
@@ -65,7 +58,7 @@ class SpiderFarmerLight(LightEntity):
             data = json.loads(payload)
             self._attr_is_on = data.get("state") == "ON"
             level = data.get("brightness", 0)
-            self._attr_brightness = math.floor(level / 100 * 255)
+            self._attr_brightness = int(level / 100 * 255)  # int() truncates: floor(50/100 * 255) = 127
             self._attr_effect = data.get("effect")
         except (json.JSONDecodeError, TypeError):
             pass
