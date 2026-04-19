@@ -1,0 +1,13 @@
+#!/usr/bin/with-contenv bashio
+set -e
+
+mkdir -p /tmp/spiderbridge
+
+cat > /tmp/spiderbridge/mosquitto.conf <<EOF
+listener 1883 0.0.0.0
+allow_anonymous true
+persistence false
+log_type error
+EOF
+
+bashio::log.info "Mosquitto config ready"

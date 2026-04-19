@@ -1,0 +1,65 @@
+#!/usr/bin/with-contenv bashio
+set -e
+
+HOTSPOT_ENABLED=$(bashio::config 'hotspot_enabled')
+
+if [ "${HOTSPOT_ENABLED}" != "true" ]; then
+    bashio::log.info "Hotspot disabled — skipping setup"
+    exit 0
+fi
+
+SSID=$(bashio::config 'ssid')
+PASSWORD=$(bashio::config 'password')
+CHANNEL=$(bashio::config 'channel')
+IP=$(bashio::config 'hotspot_ip')
+IFACE="wlan0"
+
+bashio::log.info "Setting up hotspot: ${SSID} on ${IFACE} (${IP})"
+
+# Release wlan0 from NetworkManager
+mkdir -p /etc/NetworkManager/conf.d
+cat > /etc/NetworkManager/conf.d/spiderbridge-unmanaged.conf <<EOF
+[keyfile]
+unmanaged-devices=interface-name:${IFACE}
+EOF
+nmcli general reload 2>/dev/null || true
+
+# Assign static IP to interface
+ip link set "${IFACE}" down 2>/dev/null || true
+ip addr flush dev "${IFACE}" 2>/dev/null || true
+ip link set "${IFACE}" up
+ip addr add "${IP}/24" dev "${IFACE}"
+
+# hostapd config
+mkdir -p /tmp/spiderbridge
+cat > /tmp/spiderbridge/hostapd.conf <<EOF
+interface=${IFACE}
+ssid=${SSID}
+hw_mode=g
+channel=${CHANNEL}
+wpa=2
+wpa_passphrase=${PASSWORD}
+wpa_key_mgmt=WPA-PSK
+wpa_pairwise=CCMP
+rsn_pairwise=CCMP
+EOF
+
+# dnsmasq config — DHCP + DNS redirect
+SUBNET=$(echo "${IP}" | cut -d. -f1-3)
+cat > /tmp/spiderbridge/dnsmasq.conf <<EOF
+interface=${IFACE}
+bind-interfaces
+dhcp-range=${SUBNET}.10,${SUBNET}.50,255.255.255.0,24h
+address=/sf.mqtt.spider-farmer.com/${IP}
+no-resolv
+server=8.8.8.8
+EOF
+
+# Redirect port 8883 on wlan0 to local proxy
+iptables -t nat -F PREROUTING 2>/dev/null || true
+iptables -t nat -A PREROUTING -i "${IFACE}" -p tcp --dport 8883 -j REDIRECT --to-ports 8883
+
+# IP forwarding
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+bashio::log.info "Hotspot setup complete"
