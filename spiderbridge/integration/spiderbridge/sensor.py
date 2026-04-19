@@ -12,6 +12,8 @@ STATIC_SENSORS = [
     ("temperature", "Air Temperature", "°C",    SensorDeviceClass.TEMPERATURE),
     ("humidity",    "Air Humidity",    "%",     SensorDeviceClass.HUMIDITY),
     ("vpd",         "Air VPD",         "kPa",   None),
+    ("co2",         "Air CO₂",         "ppm",   SensorDeviceClass.CO2),
+    ("ppfd",        "Air PPFD",        "µmol/m²/s", None),
     ("temp_soil",   "Soil Avg Temperature", "°C",    SensorDeviceClass.TEMPERATURE),
     ("humi_soil",   "Soil Avg Humidity",    "%",     SensorDeviceClass.HUMIDITY),
     ("ec_soil",     "Soil Avg EC",          "mS/cm", None),

@@ -123,9 +123,11 @@ def publish_discovery_for_device(
 
     # ── Air sensors ───────────────────────────────────────────────────────────
     entities += [
-        _sensor(device_id, "temperature", "Air Temperature", "°C",  "temperature", device_cfg),
-        _sensor(device_id, "humidity",    "Air Humidity",    "%",   "humidity",    device_cfg),
-        _sensor(device_id, "vpd",         "Air VPD",         "kPa", None,          device_cfg),
+        _sensor(device_id, "temperature", "Air Temperature", "°C",       "temperature", device_cfg),
+        _sensor(device_id, "humidity",    "Air Humidity",    "%",        "humidity",    device_cfg),
+        _sensor(device_id, "vpd",         "Air VPD",         "kPa",      None,          device_cfg),
+        _sensor(device_id, "co2",         "Air CO₂",         "ppm",      "carbon_dioxide", device_cfg),
+        _sensor(device_id, "ppfd",        "Air PPFD",        "µmol/m²/s", None,         device_cfg),
     ]
 
     # ── Light ─────────────────────────────────────────────────────────────────
