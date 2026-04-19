@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+mkdir -p /config/custom_components
+cp -rf /usr/share/spiderbridge-integration/spiderbridge /config/custom_components/
+echo "[INFO] SpiderBridge integration installed to /config/custom_components"

@@ -1,6 +1,6 @@
 name: SpiderBridge
 slug: spiderbridge
-version: "1.0.7"
+version: "1.2.0"
 description: Spider Farmer GGS Controller → Home Assistant via MQTT Discovery
 url: https://github.com/iceboerg00/spiderfarmer-bridge
 arch:
@@ -14,6 +14,8 @@ privileged:
   - NET_ADMIN
   - SYS_ADMIN
   - NET_RAW
+map:
+  - config:rw
 options:
   hotspot_enabled: true
   ssid: "SF-Bridge"

@@ -21,4 +21,6 @@ COPY app/certs/ /usr/share/spiderbridge/certs/
 COPY app/main_proxy.py /usr/share/spiderbridge/main_proxy.py
 COPY app/main_discovery.py /usr/share/spiderbridge/main_discovery.py
 
+COPY integration/ /usr/share/spiderbridge-integration/
+
 COPY rootfs /
