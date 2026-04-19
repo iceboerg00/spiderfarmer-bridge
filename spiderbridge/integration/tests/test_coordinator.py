@@ -9,9 +9,11 @@ from spiderbridge.coordinator import MQTTCoordinator
 def _make_coordinator(device_id="ggs_1"):
     hass = MagicMock()
     hass.loop = MagicMock()
-    # Make call_soon_threadsafe call the function immediately for testing
     hass.loop.call_soon_threadsafe.side_effect = lambda fn, *args: fn(*args)
-    return MQTTCoordinator(hass, device_id)
+    with patch("spiderbridge.coordinator.mqtt.Client") as mock_client_cls:
+        mock_client_cls.return_value = MagicMock()
+        coord = MQTTCoordinator(hass, device_id)
+    return coord
 
 
 def test_dispatch_state_calls_listener():
@@ -69,3 +71,14 @@ def test_multiple_listeners_on_same_field():
     coordinator.subscribe_state("temperature", lambda p: b.append(p))
     coordinator._dispatch("spiderfarmer/ggs_1/state/temperature", "23.0")
     assert a == ["23.0"] and b == ["23.0"]
+
+
+def test_on_message_dispatches_to_listener():
+    coordinator = _make_coordinator()
+    received = []
+    coordinator.subscribe_state("temperature", lambda p: received.append(p))
+    msg = MagicMock()
+    msg.topic = "spiderfarmer/ggs_1/state/temperature"
+    msg.payload = b"19.0"
+    coordinator._on_message(None, None, msg)
+    assert received == ["19.0"]
