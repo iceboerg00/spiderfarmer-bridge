@@ -22,6 +22,9 @@ def test_load_config_uses_ha_options_when_options_json_exists(tmp_path):
     assert result["proxy"]["upstream_host"] == "sf.mqtt.spider-farmer.com"
     assert result["mosquitto"]["host"] == "127.0.0.1"
     assert result["devices"][0]["mac"] == "AABBCCDDEEFF"
+    assert result["hotspot"]["ssid"] == "TestNet"
+    assert result["hotspot"]["enabled"] is True
+    assert result["hotspot"]["channel"] == 6
 
 
 def test_load_config_falls_back_to_yaml_when_no_options_json(tmp_path):
