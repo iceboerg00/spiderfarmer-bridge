@@ -16,6 +16,8 @@ from .normalizer import normalize_status
 from ha.discovery import publish_soil_sensor_discovery as _publish_soil_sensor_discovery
 from .command_handler import translate_command
 
+from proxy.config import HA_OPTIONS_PATH, HA_DEVICES_PATH
+
 logger = logging.getLogger(__name__)
 
 _MAC_PLACEHOLDER = "AABBCCDDEEFF"
@@ -126,13 +128,20 @@ class MITMProxy:
         return None
 
     def _save_config(self) -> None:
-        """Persist current in-memory config back to config.yaml."""
-        try:
-            with open(self._config_path, "w") as f:
-                yaml.dump(self.config, f, default_flow_style=False, allow_unicode=True)
-            logger.info("config.yaml aktualisiert.")
-        except Exception as e:
-            logger.error("Fehler beim Speichern von config.yaml: %s", e)
+        if Path(HA_OPTIONS_PATH).exists():
+            try:
+                with open(HA_DEVICES_PATH, "w") as f:
+                    yaml.dump(self.config.get("devices", []), f)
+                logger.info("/data/devices.yaml aktualisiert.")
+            except Exception as e:
+                logger.error("Fehler beim Speichern von /data/devices.yaml: %s", e)
+        else:
+            try:
+                with open(self._config_path, "w") as f:
+                    yaml.dump(self.config, f, default_flow_style=False, allow_unicode=True)
+                logger.info("config.yaml aktualisiert.")
+            except Exception as e:
+                logger.error("Fehler beim Speichern von config.yaml: %s", e)
 
     async def handle_command(self, topic: str, value: str) -> None:
         """Handle an incoming HA command from local Mosquitto."""

@@ -60,3 +60,29 @@ def test_load_config_merges_persisted_devices(tmp_path):
         result = cfg_module.load_config()
 
     assert result["devices"][0]["mac"] == "AABBCC112233"
+
+
+def test_save_config_writes_devices_yaml_in_ha_mode(tmp_path, monkeypatch):
+    import yaml
+    from unittest.mock import MagicMock
+
+    options_file = tmp_path / "options.json"
+    options_file.write_text('{"hotspot_enabled": true}')
+    devices_file = tmp_path / "devices.yaml"
+
+    monkeypatch.setattr("proxy.config.HA_OPTIONS_PATH", str(options_file))
+    monkeypatch.setattr("proxy.config.HA_DEVICES_PATH", str(devices_file))
+    monkeypatch.setattr("proxy.mitm_proxy.HA_OPTIONS_PATH", str(options_file))
+    monkeypatch.setattr("proxy.mitm_proxy.HA_DEVICES_PATH", str(devices_file))
+
+    from proxy.mitm_proxy import MITMProxy
+    proxy_instance = MITMProxy(
+        config={"devices": [{"mac": "112233AABBCC", "id": "ggs_1",
+                             "type": "CB", "uid": "", "friendly_name": "GGS"}]},
+        mqtt_client=MagicMock(),
+        config_path=str(tmp_path / "config.yaml"),
+    )
+    proxy_instance._save_config()
+
+    saved = yaml.safe_load(devices_file.read_text())
+    assert saved[0]["mac"] == "112233AABBCC"
