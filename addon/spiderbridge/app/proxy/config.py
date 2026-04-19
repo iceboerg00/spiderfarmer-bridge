@@ -9,30 +9,31 @@ HA_OPTIONS_PATH = "/data/options.json"
 HA_DEVICES_PATH = "/data/devices.yaml"
 
 
-def _default_devices() -> list:
+def _default_devices(friendly_name: str = "Spider Farmer GGS") -> list:
     return [
         {
             "mac": "AABBCCDDEEFF",
             "type": "CB",
             "id": "ggs_1",
             "uid": "",
-            "friendly_name": "Spider Farmer GGS",
+            "friendly_name": friendly_name,
         }
     ]
 
 
-def _load_ha_devices() -> list:
+def _load_ha_devices(friendly_name: str = "Spider Farmer GGS") -> list:
     p = Path(HA_DEVICES_PATH)
     if p.exists():
         try:
             with open(p) as f:
-                return yaml.safe_load(f) or _default_devices()
+                return yaml.safe_load(f) or _default_devices(friendly_name)
         except yaml.YAMLError as e:
             logger.warning("Corrupt devices.yaml, using defaults: %s", e)
-    return _default_devices()
+    return _default_devices(friendly_name)
 
 
 def _build_config_from_ha_options(options: dict) -> dict:
+    friendly_name = options.get("device_name", "Spider Farmer GGS")
     return {
         "hotspot": {
             "enabled": options.get("hotspot_enabled", True),
@@ -59,7 +60,7 @@ def _build_config_from_ha_options(options: dict) -> dict:
             "local_password": "",
             "ha_mqtt_password": "",
         },
-        "devices": _load_ha_devices(),
+        "devices": _load_ha_devices(friendly_name),
     }
 
 

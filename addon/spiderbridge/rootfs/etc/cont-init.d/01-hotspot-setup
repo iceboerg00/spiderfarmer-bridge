@@ -12,6 +12,17 @@ SSID=$(bashio::config 'ssid')
 PASSWORD=$(bashio::config 'password')
 CHANNEL=$(bashio::config 'channel')
 IP=$(bashio::config 'hotspot_ip')
+
+# Validate SSID and password to prevent config injection
+if [[ ! "${SSID}" =~ ^[A-Za-z0-9_\ \-]{1,32}$ ]]; then
+    bashio::log.fatal "Invalid SSID: only alphanumeric, space, underscore, hyphen (max 32 chars)"
+    exit 1
+fi
+if [ "${#PASSWORD}" -lt 8 ] || [ "${#PASSWORD}" -gt 63 ]; then
+    bashio::log.fatal "Invalid password: must be 8-63 characters"
+    exit 1
+fi
+
 IFACE="wlan0"
 
 bashio::log.info "Setting up hotspot: ${SSID} on ${IFACE} (${IP})"
