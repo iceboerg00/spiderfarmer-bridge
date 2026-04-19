@@ -5,11 +5,14 @@ description: Spider Farmer GGS Controller → Home Assistant via MQTT Discovery
 url: https://github.com/iceboerg00/spiderfarmer-bridge
 arch:
   - aarch64
-  - armv7
+  - armhf
 startup: application
 boot: auto
 host_network: true
-privileged: true
+privileged:
+  - NET_ADMIN
+  - SYS_ADMIN
+  - NET_RAW
 options:
   hotspot_enabled: true
   ssid: "SF-Bridge"
