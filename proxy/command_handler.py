@@ -30,8 +30,10 @@ def translate_command(
     outlet_num: Optional[int] = None,
     device_state: Optional[dict] = None,
     subfield: Optional[str] = None,
+    last_nonzero_level: Optional[dict] = None,
 ) -> Optional[dict]:
     state = device_state or {}
+    last_levels = last_nonzero_level or {}
 
     # ── Outlet ────────────────────────────────────────────────────────────────
     if outlet_num is not None:
@@ -47,7 +49,14 @@ def translate_command(
         except (ValueError, TypeError):
             cmd = {"state": value}
         on = _onoff(cmd.get("state", "ON"))
-        level = int(cmd.get("brightness", cur.get("level", cur.get("mLevel", 50))))
+        if "brightness" in cmd:
+            level = int(cmd["brightness"])
+        else:
+            level = int(cur.get("level", cur.get("mLevel", 0)))
+            # Controller reports level=0 while light is off; restore last
+            # non-zero brightness so OFF→ON keeps the previous setting.
+            if on == 1 and level == 0:
+                level = int(last_levels.get(field, 100))
         level = max(0, min(100, level))
         effect = cmd.get("effect")
         mode = _EFFECT_TO_MODE.get(effect, cur.get("modeType", 1)) if effect else cur.get("modeType", 1)

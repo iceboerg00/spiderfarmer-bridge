@@ -64,6 +64,48 @@ def test_light_off_with_plain_string_value():
     assert r["params"]["light"]["mOnOff"] == 0
 
 
+def test_light_on_after_off_restores_last_nonzero_brightness():
+    # Symptom: HA sends {"state":"ON"} (no brightness) right after turning the
+    # light off. Device state at that moment reports level=0 (light is off), so
+    # the old fallback chain produced mLevel=0 — light "on" but invisible.
+    # Fix: when on=1 and resolved level=0, fall back to last non-zero level.
+    val = json.dumps({"state": "ON"})
+    cur_state = {"light": {"level": 0, "modeType": 1}}
+    last = {"light": 40}
+    r = translate_command("light", val, "AABBCC", "uid1",
+                          device_state=cur_state, last_nonzero_level=last)
+    assert r["params"]["light"]["mOnOff"] == 1
+    assert r["params"]["light"]["mLevel"] == 40
+
+
+def test_light_on_no_history_defaults_to_full():
+    # First ever ON with no last_nonzero_level history and current level 0 →
+    # default to 100 % so the light is at least visible.
+    val = json.dumps({"state": "ON"})
+    cur_state = {"light": {"level": 0, "modeType": 1}}
+    r = translate_command("light", val, "AABBCC", "uid1",
+                          device_state=cur_state, last_nonzero_level={})
+    assert r["params"]["light"]["mOnOff"] == 1
+    assert r["params"]["light"]["mLevel"] == 100
+
+
+def test_light_explicit_brightness_overrides_last_level():
+    # Explicit brightness from HA always wins, regardless of last_nonzero_level.
+    val = json.dumps({"state": "ON", "brightness": 25})
+    last = {"light": 80}
+    r = translate_command("light", val, "AABBCC", "uid1", last_nonzero_level=last)
+    assert r["params"]["light"]["mLevel"] == 25
+
+
+def test_light2_on_after_off_restores_last_nonzero_brightness():
+    val = json.dumps({"state": "ON"})
+    cur_state = {"light2": {"level": 0, "modeType": 1}}
+    last = {"light2": 75}
+    r = translate_command("light2", val, "AABBCC", "uid1",
+                          device_state=cur_state, last_nonzero_level=last)
+    assert r["params"]["light2"]["mLevel"] == 75
+
+
 # ── Blower (exhaust fan) ─────────────────────────────────────────────────────
 
 def test_blower_on_off_no_subfield():

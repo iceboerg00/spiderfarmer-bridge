@@ -33,6 +33,7 @@ class ProxySession:
         self._client_writer: Optional[asyncio.StreamWriter] = None
         self.device_state: Dict[str, dict] = {}  # module → current state from getDevSta
         self.ha_overrides: Dict[str, dict] = {}  # module → {field: value} to enforce
+        self.last_nonzero_level: Dict[str, int] = {}  # module → last brightness > 0
 
     def set_upstream(self, writer: asyncio.StreamWriter) -> None:
         self._upstream_writer = writer
@@ -154,7 +155,8 @@ class MITMProxy:
             outlet_num = int(field[7:])
 
         payload = translate_command(field, value, session.mac, session.uid, outlet_num,
-                                    device_state=session.device_state, subfield=subfield)
+                                    device_state=session.device_state, subfield=subfield,
+                                    last_nonzero_level=session.last_nonzero_level)
         if payload:
             # Store override so relay_down can enforce it against server corrections
             params = payload.get("params", {})
@@ -312,9 +314,16 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
 
     # Store current module states for use in commands
     d = data.get("data", {})
-    for module in ("light", "blower", "fan", "heater", "humidifier", "dehumidifier"):
+    for module in ("light", "light2", "blower", "fan", "heater", "humidifier", "dehumidifier"):
         if module in d:
             session.device_state[module] = d[module]
+
+    # Remember last non-zero brightness so OFF→ON restores the previous level
+    for module in ("light", "light2"):
+        if module in d:
+            lvl = d[module].get("level", d[module].get("mLevel", 0))
+            if isinstance(lvl, (int, float)) and lvl > 0:
+                session.last_nonzero_level[module] = int(lvl)
 
     # Publish discovery for newly seen soil sensor IDs
     seen = known_soil_ids.setdefault(session.device_id, set())
