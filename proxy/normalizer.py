@@ -29,7 +29,10 @@ def normalize_status(device_id: str, data: Dict[str, Any]) -> Dict[str, str]:
             result[f"spiderfarmer/{device_id}/state/{norm_key}"] = str(sensor[sf_key])
 
     # ── Light (JSON schema with effect for mode) ──────────────────────────────
-    _LIGHT_MODES = {1: "Modus: Manual / Timer", 12: "Modus: PPFD"}
+    # Both modeType 0 (Manual) and 1 (Timer) map to the same UI label so the
+    # effect dropdown in HA shows a known value regardless of which the
+    # controller currently reports.
+    _LIGHT_MODES = {0: "Modus: Manual / Timer", 1: "Modus: Manual / Timer", 12: "Modus: PPFD"}
     light = d.get("light", {})
     if light:
         mode = light.get("modeType", 1)

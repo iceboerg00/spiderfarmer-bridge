@@ -32,7 +32,7 @@ class ProxySession:
         self._upstream_writer: Optional[asyncio.StreamWriter] = None
         self._client_writer: Optional[asyncio.StreamWriter] = None
         self.device_state: Dict[str, dict] = {}  # module → current state from getDevSta
-        self.ha_overrides: Dict[str, dict] = {}  # module → {field: value} to enforce
+        self.last_nonzero_level: Dict[str, int] = {}  # module → last brightness > 0
 
     def set_upstream(self, writer: asyncio.StreamWriter) -> None:
         self._upstream_writer = writer
@@ -154,15 +154,9 @@ class MITMProxy:
             outlet_num = int(field[7:])
 
         payload = translate_command(field, value, session.mac, session.uid, outlet_num,
-                                    device_state=session.device_state, subfield=subfield)
+                                    device_state=session.device_state, subfield=subfield,
+                                    last_nonzero_level=session.last_nonzero_level)
         if payload:
-            # Store override so relay_down can enforce it against server corrections
-            params = payload.get("params", {})
-            key_path = params.get("keyPath", [])
-            if len(key_path) == 2:
-                module = key_path[1]
-                module_data = params.get(module, {})
-                session.ha_overrides.setdefault(module, {}).update(module_data)
             await session.inject(payload)
 
     async def handle_client(
@@ -235,7 +229,11 @@ class MITMProxy:
                         pass
 
             async def relay_down():
-                buf_down = b""
+                # Forward server→device traffic unchanged. Earlier we parsed
+                # packets here and mutated setConfigField bodies to keep HA's
+                # last command sticky against the SF cloud's corrections, but
+                # that fought legitimate app/cloud commands and made the lamp
+                # uncontrollable except from bluetooth-paired sessions.
                 try:
                     while True:
                         try:
@@ -244,13 +242,8 @@ class MITMProxy:
                             break
                         if not data:
                             break
-                        buf_down += data
-                        pkts_down, buf_down = parse_packets(buf_down)
-                        out = _apply_overrides_to_packets(
-                            pkts_down, data, nonlocal_session[0]
-                        )
                         try:
-                            client_writer.write(out)
+                            client_writer.write(data)
                             await client_writer.drain()
                         except Exception:
                             break
@@ -312,9 +305,16 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
 
     # Store current module states for use in commands
     d = data.get("data", {})
-    for module in ("light", "blower", "fan", "heater", "humidifier", "dehumidifier"):
+    for module in ("light", "light2", "blower", "fan", "heater", "humidifier", "dehumidifier"):
         if module in d:
             session.device_state[module] = d[module]
+
+    # Remember last non-zero brightness so OFF→ON restores the previous level
+    for module in ("light", "light2"):
+        if module in d:
+            lvl = d[module].get("level", d[module].get("mLevel", 0))
+            if isinstance(lvl, (int, float)) and lvl > 0:
+                session.last_nonzero_level[module] = int(lvl)
 
     # Publish discovery for newly seen soil sensor IDs
     seen = known_soil_ids.setdefault(session.device_id, set())
@@ -327,44 +327,6 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
     normalized = normalize_status(session.device_id, data)
     for norm_topic, value in normalized.items():
         mqtt_client.publish(norm_topic, value, retain=True)
-
-
-def _apply_overrides_to_packets(pkts, raw_data: bytes, session) -> bytes:
-    """Intercept SERVER→DEVICE packets and apply HA overrides to setConfigField."""
-    if not pkts or session is None or not session.ha_overrides:
-        return raw_data
-    modified = False
-    out_parts = []
-    for p in pkts:
-        if p.packet_type == MQTT_PUBLISH and p.message:
-            try:
-                body = json.loads(p.message)
-            except Exception:
-                body = None
-            if body and body.get("method") == "setConfigField":
-                params = body.get("params", {})
-                key_path = params.get("keyPath", [])
-                if len(key_path) == 2:
-                    module = key_path[1]
-                    if module in session.ha_overrides:
-                        params.setdefault(module, {}).update(session.ha_overrides[module])
-                        body["params"] = params
-                        new_msg = json.dumps(body, separators=(',', ':')).encode()
-                        out_parts.append(build_publish(
-                            p.topic or "", new_msg, p.qos, p.retain,
-                            p.packet_id or 1,
-                        ))
-                        logger.info("[%s] Override applied to server setConfigField: %s",
-                                    session.device_id, session.ha_overrides.get(module))
-                        modified = True
-                        continue
-        # Rebuild non-modified packets from raw payload
-        first_byte = (p.packet_type << 4) | p.flags
-        from .mqtt_parser import _encode_remaining_length
-        out_parts.append(bytes([first_byte]) + _encode_remaining_length(len(p.payload)) + p.payload)
-    if not modified:
-        return raw_data
-    return b"".join(out_parts)
 
 
 async def _tcp_relay_fallback(
