@@ -23,6 +23,7 @@ def _sensor(device_id: str, field: str, name: str, unit: str, device_class: str 
         "unique_id": uid,
         "state_topic": f"spiderfarmer/{device_id}/state/{field}",
         "availability_topic": f"spiderfarmer/{device_id}/availability",
+        "state_class": "measurement",
         "device": _device_info(device_id, cfg),
     }
     if unit:
@@ -181,6 +182,7 @@ def publish_soil_sensor_discovery(
             "unique_id": uid,
             "state_topic": f"spiderfarmer/{device_id}/state/soil_{sensor_id}_{sf}",
             "availability_topic": f"spiderfarmer/{device_id}/availability",
+            "state_class": "measurement",
             "unit_of_measurement": unit,
             "device": dev,
         }
