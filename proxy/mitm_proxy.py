@@ -248,20 +248,6 @@ class MITMProxy:
                             break
                         buf_down += data
                         pkts_down, buf_down = parse_packets(buf_down)
-                        # TEMP DIAG: log server→device setConfigField for light/light2
-                        # so we can compare format vs. our inject() payload.
-                        for _p in pkts_down:
-                            if _p.packet_type == MQTT_PUBLISH and _p.message:
-                                try:
-                                    _body = json.loads(_p.message)
-                                except Exception:
-                                    continue
-                                if _body.get("method") != "setConfigField":
-                                    continue
-                                _kp = _body.get("params", {}).get("keyPath", [])
-                                if len(_kp) == 2 and _kp[1] in ("light", "light2"):
-                                    logger.info("[server→device] topic=%s body=%s",
-                                                _p.topic, json.dumps(_body))
                         out = _apply_overrides_to_packets(
                             pkts_down, data, nonlocal_session[0]
                         )

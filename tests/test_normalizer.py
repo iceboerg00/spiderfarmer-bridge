@@ -37,6 +37,15 @@ def test_light_emits_json_payload_with_manual_mode():
     assert p == {"state": "ON", "brightness": 80, "effect": "Modus: Manual / Timer"}
 
 
+def test_light_mode_zero_also_displayed_as_manual():
+    # Controller reports modeType 0 (Manual) when the SF cloud or HA sets it
+    # to manual control. UI should still show a known effect, not the raw "0".
+    data = {"data": {"light": {"on": 1, "level": 80, "modeType": 0}}}
+    r = normalize_status("ggs_1", data)
+    p = json.loads(r["spiderfarmer/ggs_1/state/light"])
+    assert p["effect"] == "Modus: Manual / Timer"
+
+
 def test_light_off_state():
     data = {"data": {"light": {"on": 0, "level": 0, "modeType": 1}}}
     r = normalize_status("ggs_1", data)

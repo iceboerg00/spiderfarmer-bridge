@@ -41,7 +41,11 @@ def translate_command(
         return _build(mac, uid, "outlet", ok, {"modeType": 0, "mOnOff": _onoff(value)})
 
     # ── Light / Light2 ────────────────────────────────────────────────────────
-    _EFFECT_TO_MODE = {"Modus: Manual / Timer": 1, "Modus: PPFD": 12}
+    # The SF cloud always sends modeType=0 (Manual) for direct app control —
+    # mode 1 (Timer) makes the controller follow the stored schedule and
+    # ignore mOnOff/mLevel. Mirror the cloud's payload shape so HA actually
+    # controls the lamp instead of fighting the schedule.
+    _EFFECT_TO_MODE = {"Modus: Manual / Timer": 0, "Modus: PPFD": 12}
     if field in ("light", "light2"):
         cur = state.get(field, {})
         try:
@@ -58,13 +62,13 @@ def translate_command(
             if on == 1 and level == 0:
                 level = int(last_levels.get(field, 100))
         level = max(0, min(100, level))
-        effect = cmd.get("effect")
-        mode = _EFFECT_TO_MODE.get(effect, cur.get("modeType", 1)) if effect else cur.get("modeType", 1)
+        mode = _EFFECT_TO_MODE.get(cmd.get("effect"), 0)
         return _build(mac, uid, "device", field, {
             "modeType": mode,
+            "lastAutoModeType": cur.get("lastAutoModeType", 0),
             "mOnOff": on,
             "mLevel": level,
-            "timePeriod": _TIME_PERIOD,
+            "timePeriod": cur.get("timePeriod", _TIME_PERIOD),
         })
 
     # ── Blower on/off ─────────────────────────────────────────────────────────

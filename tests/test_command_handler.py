@@ -32,11 +32,47 @@ def test_light_full_json_payload_with_ppfd_mode():
 
 
 def test_light2_full_json_payload_with_manual_mode():
+    # "Modus: Manual / Timer" effect maps to modeType 0 (Manual). Sending
+    # modeType 1 (Timer) makes the controller follow the schedule and ignore
+    # direct mOnOff/mLevel commands, which broke HA control of the lamp.
     val = json.dumps({"state": "ON", "brightness": 50, "effect": "Modus: Manual / Timer"})
     r = translate_command("light2", val, "AABBCC", "uid1")
     assert r["params"]["keyPath"] == ["device", "light2"]
-    assert r["params"]["light2"]["modeType"] == 1
+    assert r["params"]["light2"]["modeType"] == 0
     assert r["params"]["light2"]["mLevel"] == 50
+
+
+def test_light_default_mode_is_manual():
+    # ON without explicit effect defaults to modeType 0 (Manual) — never
+    # Timer (1), even if the controller currently reports Timer.
+    val = json.dumps({"state": "ON", "brightness": 60})
+    cur = {"light": {"modeType": 1, "level": 60}}
+    r = translate_command("light", val, "AABBCC", "uid1", device_state=cur)
+    assert r["params"]["light"]["modeType"] == 0
+
+
+def test_light_payload_includes_last_auto_mode_type():
+    val = json.dumps({"state": "ON", "brightness": 50})
+    cur = {"light": {"lastAutoModeType": 12}}
+    r = translate_command("light", val, "AABBCC", "uid1", device_state=cur)
+    assert r["params"]["light"]["lastAutoModeType"] == 12
+
+
+def test_light_payload_preserves_existing_time_period():
+    # Use the controller's stored schedule rather than wiping it with the
+    # minimal placeholder.
+    sched = [{"enabled": 1, "weekmask": 127, "startTime": 21600,
+              "endTime": 0, "brightness": 40, "fadeTime": 900}]
+    val = json.dumps({"state": "ON", "brightness": 50})
+    cur = {"light": {"timePeriod": sched}}
+    r = translate_command("light", val, "AABBCC", "uid1", device_state=cur)
+    assert r["params"]["light"]["timePeriod"] == sched
+
+
+def test_light_falls_back_to_minimal_time_period_when_unknown():
+    val = json.dumps({"state": "ON", "brightness": 50})
+    r = translate_command("light", val, "AABBCC", "uid1")
+    assert r["params"]["light"]["timePeriod"] == [{"weekmask": 127}]
 
 
 def test_light_brightness_clamped_high():
