@@ -1,70 +1,154 @@
 import json
-from ha.discovery import (
-    build_sensor_discovery,
-    build_number_discovery,
-    build_switch_discovery,
-    publish_discovery_for_device,
-)
 
-CFG = {"friendly_name": "Test GGS", "mac": "AABBCC"}
+from ha.discovery import publish_discovery_for_device, publish_soil_sensor_discovery
+
+CFG = {"friendly_name": "Test GGS"}
 
 
-def test_sensor_temperature():
-    topic, payload = build_sensor_discovery("ggs_1", "temperature", CFG)
-    assert topic == "homeassistant/sensor/spiderfarmer_ggs_1_temperature/config"
-    assert payload["device_class"] == "temperature"
-    assert payload["unit_of_measurement"] == "°C"
-    assert payload["state_topic"] == "spiderfarmer/ggs_1/state/temperature"
-    assert payload["availability_topic"] == "spiderfarmer/ggs_1/availability"
-    assert payload["unique_id"] == "spiderfarmer_ggs_1_temperature"
-    assert payload["device"]["identifiers"] == ["spiderfarmer_ggs_1"]
-    assert payload["device"]["manufacturer"] == "Spider Farmer"
-
-
-def test_sensor_vpd_no_device_class():
-    _, payload = build_sensor_discovery("ggs_1", "vpd", CFG)
-    assert "device_class" not in payload
-    assert payload["unit_of_measurement"] == "kPa"
-
-
-def test_sensor_co2_device_class():
-    _, payload = build_sensor_discovery("ggs_1", "co2", CFG)
-    assert payload["device_class"] == "carbon_dioxide"
-    assert payload["unit_of_measurement"] == "ppm"
-
-
-def test_number_blower():
-    topic, payload = build_number_discovery("ggs_1", "blower_speed", 0, 10, CFG)
-    assert topic == "homeassistant/number/spiderfarmer_ggs_1_blower_speed/config"
-    assert payload["min"] == 0
-    assert payload["max"] == 10
-    assert payload["step"] == 1
-    assert payload["command_topic"] == "spiderfarmer/ggs_1/command/blower_speed/set"
-    assert payload["state_topic"] == "spiderfarmer/ggs_1/state/blower_speed"
-
-
-def test_switch_heater():
-    topic, payload = build_switch_discovery("ggs_1", "heater", CFG)
-    assert topic == "homeassistant/switch/spiderfarmer_ggs_1_heater/config"
-    assert payload["payload_on"] == "ON"
-    assert payload["payload_off"] == "OFF"
-    assert payload["command_topic"] == "spiderfarmer/ggs_1/command/heater/set"
-
-
-def test_all_sensor_topics_unique():
-    topics = {build_sensor_discovery("ggs_1", f, CFG)[0]
-               for f in ["temperature", "humidity", "vpd", "co2", "ppfd"]}
-    assert len(topics) == 5
-
-
-def test_publish_discovery_calls_client(mocker):
-    mock_client = mocker.MagicMock()
-    publish_discovery_for_device(mock_client, "ggs_1", CFG)
-    # Must publish at least 9 entities (5 sensors + 4 numbers + core switches)
-    assert mock_client.publish.call_count >= 9
-    # All calls must use retain=True
+def _publish_calls(mock_client):
+    """Return {topic: parsed_payload} from all client.publish() calls."""
+    out = {}
     for call in mock_client.publish.call_args_list:
-        args = call.args
-        kwargs = call.kwargs
-        retain_value = kwargs.get("retain", args[2] if len(args) > 2 else None)
-        assert retain_value is True
+        topic = call.args[0]
+        out[topic] = json.loads(call.args[1])
+    return out
+
+
+def test_publish_discovery_emits_air_sensors(mocker):
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    pubs = _publish_calls(client)
+
+    temp = pubs["homeassistant/sensor/spiderfarmer_ggs_1_temperature/config"]
+    assert temp["device_class"] == "temperature"
+    assert temp["unit_of_measurement"] == "°C"
+    assert temp["state_topic"] == "spiderfarmer/ggs_1/state/temperature"
+
+    co2 = pubs["homeassistant/sensor/spiderfarmer_ggs_1_co2/config"]
+    assert co2["device_class"] == "carbon_dioxide"
+    assert co2["unit_of_measurement"] == "ppm"
+
+    ppfd = pubs["homeassistant/sensor/spiderfarmer_ggs_1_ppfd/config"]
+    assert "device_class" not in ppfd  # no HA device class for PPFD
+    assert ppfd["unit_of_measurement"] == "µmol/m²/s"
+
+
+def test_publish_discovery_emits_lights_with_effect_list(mocker):
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    pubs = _publish_calls(client)
+
+    light = pubs["homeassistant/light/spiderfarmer_ggs_1_light/config"]
+    assert light["schema"] == "json"
+    assert light["brightness"] is True
+    assert light["brightness_scale"] == 100
+    assert light["effect_list"] == ["Modus: Manual / Timer", "Modus: PPFD"]
+    assert light["command_topic"] == "spiderfarmer/ggs_1/command/light/set"
+
+    assert "homeassistant/light/spiderfarmer_ggs_1_light2/config" in pubs
+
+
+def test_publish_discovery_emits_fans_with_correct_speed_ranges(mocker):
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    pubs = _publish_calls(client)
+
+    blower = pubs["homeassistant/fan/spiderfarmer_ggs_1_blower/config"]
+    assert blower["speed_range_max"] == 100
+    assert blower["percentage_command_topic"] == "spiderfarmer/ggs_1/command/blower/percentage/set"
+
+    fan = pubs["homeassistant/fan/spiderfarmer_ggs_1_fan/config"]
+    assert fan["speed_range_max"] == 10
+
+
+def test_publish_discovery_emits_accessory_switches(mocker):
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    pubs = _publish_calls(client)
+
+    for module in ("heater", "humidifier", "dehumidifier"):
+        topic = f"homeassistant/switch/spiderfarmer_ggs_1_{module}/config"
+        sw = pubs[topic]
+        assert sw["payload_on"] == "ON"
+        assert sw["payload_off"] == "OFF"
+        assert sw["command_topic"] == f"spiderfarmer/ggs_1/command/{module}/set"
+
+
+def test_publish_discovery_default_outlet_count_is_10(mocker):
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    pubs = _publish_calls(client)
+
+    for i in range(1, 11):
+        assert f"homeassistant/switch/spiderfarmer_ggs_1_outlet_{i}/config" in pubs
+    assert "homeassistant/switch/spiderfarmer_ggs_1_outlet_11/config" not in pubs
+
+
+def test_publish_discovery_outlet_count_configurable(mocker):
+    client = mocker.MagicMock()
+    cfg = dict(CFG, outlets=4)
+    publish_discovery_for_device(client, "ggs_1", cfg)
+    pubs = _publish_calls(client)
+
+    assert "homeassistant/switch/spiderfarmer_ggs_1_outlet_4/config" in pubs
+    assert "homeassistant/switch/spiderfarmer_ggs_1_outlet_5/config" not in pubs
+
+
+def test_publish_discovery_emits_soil_avg_sensors(mocker):
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    pubs = _publish_calls(client)
+
+    for field, dc, unit in [
+        ("temp_soil", "temperature", "°C"),
+        ("humi_soil", "humidity",    "%"),
+        ("ec_soil",   None,          "mS/cm"),
+    ]:
+        topic = f"homeassistant/sensor/spiderfarmer_ggs_1_{field}/config"
+        p = pubs[topic]
+        assert p["unit_of_measurement"] == unit
+        if dc:
+            assert p["device_class"] == dc
+        else:
+            assert "device_class" not in p
+
+
+def test_publish_discovery_uses_retain_for_every_message(mocker):
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    for call in client.publish.call_args_list:
+        assert call.kwargs.get("retain") is True
+
+
+def test_publish_discovery_device_info_consistent(mocker):
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    pubs = _publish_calls(client)
+
+    seen = {tuple(p["device"]["identifiers"]) for p in pubs.values()}
+    assert seen == {("spiderfarmer_ggs_1",)}
+
+    for p in pubs.values():
+        assert p["device"]["manufacturer"] == "Spider Farmer"
+        assert p["device"]["model"] == "GGS Controller"
+        assert p["device"]["name"] == "Test GGS"
+
+
+def test_publish_soil_sensor_discovery_emits_three_entities(mocker):
+    client = mocker.MagicMock()
+    sensor_id = "3839383705306F29"
+    publish_soil_sensor_discovery(client, "ggs_1", sensor_id, CFG)
+    pubs = _publish_calls(client)
+
+    assert len(pubs) == 3
+    short = sensor_id[-8:].upper()  # "05306F29"
+
+    temp_topic = f"homeassistant/sensor/spiderfarmer_ggs_1_soil_{sensor_id}_temp/config"
+    assert temp_topic in pubs
+    assert pubs[temp_topic]["device_class"] == "temperature"
+    assert short in pubs[temp_topic]["name"]
+
+    ec_topic = f"homeassistant/sensor/spiderfarmer_ggs_1_soil_{sensor_id}_ec/config"
+    assert ec_topic in pubs
+    assert "device_class" not in pubs[ec_topic]
+    assert pubs[ec_topic]["unit_of_measurement"] == "mS/cm"
