@@ -10,7 +10,7 @@ import yaml
 
 from .mqtt_parser import (
     parse_packets, build_publish,
-    MQTT_PUBLISH, MQTT_CONNECT,
+    MQTT_PUBLISH, MQTT_CONNECT, MQTT_CONNACK,
 )
 from .normalizer import normalize_status
 from ha.discovery import publish_soil_sensor_discovery as _publish_soil_sensor_discovery
@@ -19,6 +19,12 @@ from .command_handler import translate_command
 logger = logging.getLogger(__name__)
 
 _MAC_PLACEHOLDER = "AABBCCDDEEFF"
+
+# Wait at most this long for the cloud's CONNACK to be relayed back to the
+# controller before injecting a DOWN PUBLISH. Without this gate, commands
+# arriving during the controller's MQTT CONNECTING phase make it drop the
+# TLS connection — which produced a HA-driven reconnect loop in the wild.
+INJECT_READY_TIMEOUT = 5.0
 
 
 class ProxySession:
@@ -33,6 +39,9 @@ class ProxySession:
         self._client_writer: Optional[asyncio.StreamWriter] = None
         self.device_state: Dict[str, dict] = {}  # module → current state from getDevSta
         self.ha_overrides: Dict[str, dict] = {}  # module → {field: value} to enforce
+        # Set once the cloud's CONNACK has been observed in relay_down — until
+        # then, inject() must hold its packets back.
+        self._ready: asyncio.Event = asyncio.Event()
 
     def set_upstream(self, writer: asyncio.StreamWriter) -> None:
         self._upstream_writer = writer
@@ -44,6 +53,12 @@ class ProxySession:
         """Inject command directly into the device TLS connection."""
         if self._client_writer is None:
             logger.warning("[%s] inject: no device connection", self.device_id)
+            return
+        try:
+            await asyncio.wait_for(self._ready.wait(), timeout=INJECT_READY_TIMEOUT)
+        except asyncio.TimeoutError:
+            logger.warning("[%s] inject: upstream CONNACK not seen within %.1fs — dropping command",
+                           self.device_id, INJECT_READY_TIMEOUT)
             return
         raw = build_publish(
             topic=f"SF/GGS/CB/API/DOWN/{self.mac.upper().replace(':', '')}",
@@ -246,9 +261,15 @@ class MITMProxy:
                             break
                         buf_down += data
                         pkts_down, buf_down = parse_packets(buf_down)
-                        out = _apply_overrides_to_packets(
-                            pkts_down, data, nonlocal_session[0]
-                        )
+                        session = nonlocal_session[0]
+                        if session is not None and not session._ready.is_set():
+                            for p in pkts_down:
+                                if p.packet_type == MQTT_CONNACK:
+                                    session._ready.set()
+                                    logger.debug("[%s] upstream CONNACK observed — inject path open",
+                                                 session.device_id)
+                                    break
+                        out = _apply_overrides_to_packets(pkts_down, data, session)
                         try:
                             client_writer.write(out)
                             await client_writer.drain()
