@@ -25,8 +25,13 @@ ip addr flush dev "${IFACE}" 2>/dev/null || true
 ip link set "${IFACE}" up
 ip addr add "${IP}/24" dev "${IFACE}"
 
+# Stability: disable Wi-Fi powersave (was causing daily AP dropouts on standalone Pi)
+iw dev "${IFACE}" set power_save off 2>/dev/null || true
+
+# ieee80211w=0 disables Protected Management Frames — the GGS Controller does
+# not negotiate PMF and silently drops association when it is required.
 mkdir -p /tmp/spiderbridge
-printf 'interface=%s\nssid=%s\nhw_mode=g\nchannel=%s\nwpa=2\nwpa_passphrase=%s\nwpa_key_mgmt=WPA-PSK\nwpa_pairwise=CCMP\nrsn_pairwise=CCMP\n' \
+printf 'interface=%s\nssid=%s\nhw_mode=g\nchannel=%s\nwpa=2\nwpa_passphrase=%s\nwpa_key_mgmt=WPA-PSK\nwpa_pairwise=CCMP\nrsn_pairwise=CCMP\nieee80211w=0\n' \
     "${IFACE}" "${SSID}" "${CHANNEL}" "${PASSWORD}" > /tmp/spiderbridge/hostapd.conf
 
 SUBNET=$(echo "${IP}" | cut -d. -f1-3)
