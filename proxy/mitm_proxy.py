@@ -20,6 +20,11 @@ logger = logging.getLogger(__name__)
 
 _MAC_PLACEHOLDER = "AABBCCDDEEFF"
 
+# Diagnostic: log the first time we see a non-CB topic prefix so we can find out
+# what standalone PS5/PS10/LC controllers actually publish to (they may not use
+# CB). Once we know we can extend support deliberately instead of guessing.
+_seen_topic_prefixes: set = set()
+
 
 class ProxySession:
     """Represents one active GGS Controller connection."""
@@ -287,9 +292,18 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
     """Normalize a PUBLISH from controller and republish locally."""
     if pkt.topic is None or pkt.message is None:
         return
-    # SF protocol: SF/GGS/CB/API/UP/{MAC}
-    if not pkt.topic.startswith("SF/GGS/CB/API/UP/"):
+    # SF protocol: SF/GGS/{prefix}/API/UP/{MAC}. CB is the prefix observed for
+    # the Control Box, but standalone PS5/PS10/LC controllers may use a
+    # different prefix. Accept any prefix and log the first sighting of each
+    # non-CB one so we can add explicit support if needed.
+    parts = pkt.topic.split("/")
+    if (len(parts) < 6 or parts[0] != "SF" or parts[1] != "GGS"
+            or parts[3] != "API" or parts[4] != "UP"):
         return
+    prefix = parts[2]
+    if prefix != "CB" and prefix not in _seen_topic_prefixes:
+        _seen_topic_prefixes.add(prefix)
+        logger.info("New SF topic prefix observed: %s (topic=%s)", prefix, pkt.topic)
     try:
         data = json.loads(pkt.message)
     except Exception:
