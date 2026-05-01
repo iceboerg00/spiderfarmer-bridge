@@ -361,8 +361,8 @@ class MITMProxy:
                                     params = body.get("params", {})
                                     keypath = params.get("keyPath", [])
                                     if "outlet" in keypath:
-                                        logger.info(
-                                            "[DIAG] SF→device outlet command: topic=%s keyPath=%s params=%s",
+                                        logger.debug(
+                                            "SF→device outlet command: topic=%s keyPath=%s params=%s",
                                             p.topic, keypath,
                                             json.dumps(params, separators=(',', ':')),
                                         )
