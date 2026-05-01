@@ -39,6 +39,11 @@ class ProxySession:
         self._client_writer: Optional[asyncio.StreamWriter] = None
         self.device_state: Dict[str, dict] = {}  # module → current state from getDevSta
         self.last_nonzero_level: Dict[str, int] = {}  # module → last brightness > 0
+        # SF protocol topic-prefix learned from observed cloud→device traffic.
+        # Defaults to "CB" (Control Box) but PS5/PS10/LC may use a different
+        # value; using the wrong prefix means our injects are silently
+        # ignored by the controller that subscribes elsewhere.
+        self.down_topic_prefix: str = "CB"
         # O# → last full setConfigField block observed in cloud→device traffic.
         # Used as a fallback when active getConfigField requests time out
         # (most controllers do not seem to honor those from the proxy side).
@@ -88,8 +93,9 @@ class ProxySession:
         if self._client_writer is None:
             logger.warning("[%s] inject: no device connection", self.device_id)
             return
+        topic = f"SF/GGS/{self.down_topic_prefix}/API/DOWN/{self.mac.upper().replace(':', '')}"
         raw = build_publish(
-            topic=f"SF/GGS/CB/API/DOWN/{self.mac.upper().replace(':', '')}",
+            topic=topic,
             message=json.dumps(payload, separators=(',', ':')).encode(),
         )
         try:
@@ -331,6 +337,21 @@ class MITMProxy:
                             for p in packets:
                                 if (p.packet_type == MQTT_PUBLISH and p.topic
                                         and "/API/DOWN/" in p.topic and p.message):
+                                    # Learn the cloud's DOWN topic prefix so our
+                                    # injects target the same one (PS5/PS10 may
+                                    # not be CB).
+                                    sess = nonlocal_session[0]
+                                    if sess is not None:
+                                        topic_parts = p.topic.split("/")
+                                        if len(topic_parts) >= 6 and topic_parts[2]:
+                                            new_prefix = topic_parts[2]
+                                            if sess.down_topic_prefix != new_prefix:
+                                                logger.info(
+                                                    "[%s] DOWN topic prefix learned: %s (was %s)",
+                                                    sess.device_id, new_prefix,
+                                                    sess.down_topic_prefix,
+                                                )
+                                                sess.down_topic_prefix = new_prefix
                                     try:
                                         body = json.loads(p.message)
                                     except Exception:
@@ -341,8 +362,9 @@ class MITMProxy:
                                     keypath = params.get("keyPath", [])
                                     if "outlet" in keypath:
                                         logger.info(
-                                            "[DIAG] SF→device outlet command: keyPath=%s params=%s",
-                                            keypath, json.dumps(params, separators=(',', ':')),
+                                            "[DIAG] SF→device outlet command: topic=%s keyPath=%s params=%s",
+                                            p.topic, keypath,
+                                            json.dumps(params, separators=(',', ':')),
                                         )
                                         # Cache full per-outlet block as fallback
                                         # for when active getConfigField times out
