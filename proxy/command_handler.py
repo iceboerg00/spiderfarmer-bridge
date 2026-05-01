@@ -31,13 +31,30 @@ def translate_command(
     device_state: Optional[dict] = None,
     subfield: Optional[str] = None,
     last_nonzero_level: Optional[dict] = None,
+    outlet_state: Optional[dict] = None,
 ) -> Optional[dict]:
     state = device_state or {}
     last_levels = last_nonzero_level or {}
+    outlets = outlet_state or {}
 
     # ── Outlet ────────────────────────────────────────────────────────────────
+    # PS5/PS10 controllers reject minimal {modeType, mOnOff} commands. The
+    # caller fetches the controller's current per-outlet config via
+    # getConfigField and passes it in `outlet_state`; we spread that block
+    # and override only modeType (force Manual) and mOnOff. This mirrors how
+    # schedule-4-real's ha-bridge does it and works for any outlet shape
+    # (simple, watering-bound, sensor-bound, etc.).
+    # If outlet_state is missing (request failed or first-ever toggle),
+    # fall back to the bare-minimum payload: works on CB, will be ignored
+    # by PS5/PS10 but logs a warning upstream.
     if outlet_num is not None:
         ok = f"O{outlet_num}"
+        cur = outlets.get(ok)
+        if cur:
+            block = dict(cur)
+            block["modeType"] = 0
+            block["mOnOff"] = _onoff(value)
+            return _build(mac, uid, "outlet", ok, block)
         return _build(mac, uid, "outlet", ok, {"modeType": 0, "mOnOff": _onoff(value)})
 
     # ── Light / Light2 ────────────────────────────────────────────────────────

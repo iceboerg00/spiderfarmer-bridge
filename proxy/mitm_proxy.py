@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import ssl
+import time
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -20,6 +21,11 @@ logger = logging.getLogger(__name__)
 
 _MAC_PLACEHOLDER = "AABBCCDDEEFF"
 
+# Diagnostic: log the first time we see a non-CB topic prefix so we can find out
+# what standalone PS5/PS10/LC controllers actually publish to (they may not use
+# CB). Once we know we can extend support deliberately instead of guessing.
+_seen_topic_prefixes: set = set()
+
 
 class ProxySession:
     """Represents one active GGS Controller connection."""
@@ -33,6 +39,48 @@ class ProxySession:
         self._client_writer: Optional[asyncio.StreamWriter] = None
         self.device_state: Dict[str, dict] = {}  # module → current state from getDevSta
         self.last_nonzero_level: Dict[str, int] = {}  # module → last brightness > 0
+        # SF protocol topic-prefix learned from observed cloud→device traffic.
+        # Defaults to "CB" (Control Box) but PS5/PS10/LC may use a different
+        # value; using the wrong prefix means our injects are silently
+        # ignored by the controller that subscribes elsewhere.
+        self.down_topic_prefix: str = "CB"
+        # O# → last full setConfigField block observed in cloud→device traffic.
+        # Used as a fallback when active getConfigField requests time out
+        # (most controllers do not seem to honor those from the proxy side).
+        self.outlet_state: Dict[str, dict] = {}
+        # msgId → Future, resolved when the device's UP response carries the
+        # same msgId. Used by request_config to await getConfigField replies.
+        self.pending_requests: Dict[str, "asyncio.Future[dict]"] = {}
+        self._msg_counter: int = 0
+
+    def _next_msg_id(self) -> str:
+        # Match the SF cloud's msgId format: 13-digit millisecond timestamp.
+        # A monotonically increasing counter is added so simultaneous requests
+        # from the same session never collide, while keeping the format short
+        # in case the controller validates msgId length.
+        self._msg_counter += 1
+        return str(int(time.time() * 1000) + self._msg_counter)
+
+    async def request_config(self, key_path: list, timeout: float = 3.0) -> dict:
+        """Send a getConfigField request to the controller and await the
+        response data. Returns the `data` dict from the UP reply, or raises
+        TimeoutError if the controller does not respond in time."""
+        msg_id = self._next_msg_id()
+        payload = {
+            "method": "getConfigField",
+            "pid": self.mac,
+            "params": {"keyPath": key_path},
+            "msgId": msg_id,
+            "uid": self.uid,
+        }
+        loop = asyncio.get_event_loop()
+        future: "asyncio.Future[dict]" = loop.create_future()
+        self.pending_requests[msg_id] = future
+        try:
+            await self.inject(payload)
+            return await asyncio.wait_for(future, timeout=timeout)
+        finally:
+            self.pending_requests.pop(msg_id, None)
 
     def set_upstream(self, writer: asyncio.StreamWriter) -> None:
         self._upstream_writer = writer
@@ -45,8 +93,9 @@ class ProxySession:
         if self._client_writer is None:
             logger.warning("[%s] inject: no device connection", self.device_id)
             return
+        topic = f"SF/GGS/{self.down_topic_prefix}/API/DOWN/{self.mac.upper().replace(':', '')}"
         raw = build_publish(
-            topic=f"SF/GGS/CB/API/DOWN/{self.mac.upper().replace(':', '')}",
+            topic=topic,
             message=json.dumps(payload, separators=(',', ':')).encode(),
         )
         try:
@@ -153,9 +202,39 @@ class MITMProxy:
         if field.startswith("outlet_") and field[7:].isdigit():
             outlet_num = int(field[7:])
 
+        # Outlet command: try active fetch first, fall back to passive cache.
+        # 1. Active getConfigField — works on controllers that honor proxy-
+        #    initiated requests; instant accurate state.
+        # 2. Cache from observed cloud→device setConfigField — works once the
+        #    SF App has touched this outlet at least once; uses the last
+        #    block the cloud sent.
+        # 3. Empty → translate_command emits minimal payload (CB-only).
+        outlet_state: Optional[dict] = None
+        if outlet_num is not None:
+            ok = f"O{outlet_num}"
+            try:
+                data = await session.request_config(["outlet", ok], timeout=3.0)
+                if isinstance(data, dict):
+                    block = data.get(ok, data)
+                    if isinstance(block, dict) and block:
+                        outlet_state = {ok: block}
+            except asyncio.TimeoutError:
+                logger.info("[%s] getConfigField timeout for %s — using cached block",
+                            session.device_id, ok)
+            except Exception as e:
+                logger.warning("[%s] getConfigField error for %s: %s",
+                               session.device_id, ok, e)
+            if outlet_state is None:
+                cached = session.outlet_state.get(ok)
+                if cached:
+                    outlet_state = {ok: cached}
+                    logger.info("[%s] Using cached outlet block for %s",
+                                session.device_id, ok)
+
         payload = translate_command(field, value, session.mac, session.uid, outlet_num,
                                     device_state=session.device_state, subfield=subfield,
-                                    last_nonzero_level=session.last_nonzero_level)
+                                    last_nonzero_level=session.last_nonzero_level,
+                                    outlet_state=outlet_state)
         if payload:
             await session.inject(payload)
 
@@ -234,6 +313,10 @@ class MITMProxy:
                 # last command sticky against the SF cloud's corrections, but
                 # that fought legitimate app/cloud commands and made the lamp
                 # uncontrollable except from bluetooth-paired sessions.
+                # Diagnostic-only parsing here logs outlet-related commands
+                # from the SF cloud/app so we can compare what the official
+                # app sends vs what we send for PS5/PS10 outlet control.
+                buf_down = b""
                 try:
                     while True:
                         try:
@@ -242,11 +325,59 @@ class MITMProxy:
                             break
                         if not data:
                             break
+                        # Forward bytes unchanged FIRST, then try to parse for logging
                         try:
                             client_writer.write(data)
                             await client_writer.drain()
                         except Exception:
                             break
+                        try:
+                            buf_down += data
+                            packets, buf_down = parse_packets(buf_down)
+                            for p in packets:
+                                if (p.packet_type == MQTT_PUBLISH and p.topic
+                                        and "/API/DOWN/" in p.topic and p.message):
+                                    # Learn the cloud's DOWN topic prefix so our
+                                    # injects target the same one (PS5/PS10 may
+                                    # not be CB).
+                                    sess = nonlocal_session[0]
+                                    if sess is not None:
+                                        topic_parts = p.topic.split("/")
+                                        if len(topic_parts) >= 6 and topic_parts[2]:
+                                            new_prefix = topic_parts[2]
+                                            if sess.down_topic_prefix != new_prefix:
+                                                logger.info(
+                                                    "[%s] DOWN topic prefix learned: %s (was %s)",
+                                                    sess.device_id, new_prefix,
+                                                    sess.down_topic_prefix,
+                                                )
+                                                sess.down_topic_prefix = new_prefix
+                                    try:
+                                        body = json.loads(p.message)
+                                    except Exception:
+                                        continue
+                                    if body.get("method") != "setConfigField":
+                                        continue
+                                    params = body.get("params", {})
+                                    keypath = params.get("keyPath", [])
+                                    if "outlet" in keypath:
+                                        logger.info(
+                                            "[DIAG] SF→device outlet command: topic=%s keyPath=%s params=%s",
+                                            p.topic, keypath,
+                                            json.dumps(params, separators=(',', ':')),
+                                        )
+                                        # Cache full per-outlet block as fallback
+                                        # for when active getConfigField times out
+                                        sess = nonlocal_session[0]
+                                        if sess is not None:
+                                            for k, v in params.items():
+                                                if (k.startswith("O") and k[1:].isdigit()
+                                                        and isinstance(v, dict)):
+                                                    sess.outlet_state[k] = v
+                        except Exception as e:
+                            # Never let logging break the relay
+                            logger.debug("relay_down parse error (non-fatal): %s", e)
+                            buf_down = b""
                 finally:
                     # Signal EOF to client so relay_up unblocks if upstream disconnects first
                     try:
@@ -287,13 +418,32 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
     """Normalize a PUBLISH from controller and republish locally."""
     if pkt.topic is None or pkt.message is None:
         return
-    # SF protocol: SF/GGS/CB/API/UP/{MAC}
-    if not pkt.topic.startswith("SF/GGS/CB/API/UP/"):
+    # SF protocol: SF/GGS/{prefix}/API/UP/{MAC}. CB is the prefix observed for
+    # the Control Box, but standalone PS5/PS10/LC controllers may use a
+    # different prefix. Accept any prefix and log the first sighting of each
+    # non-CB one so we can add explicit support if needed.
+    parts = pkt.topic.split("/")
+    if (len(parts) < 6 or parts[0] != "SF" or parts[1] != "GGS"
+            or parts[3] != "API" or parts[4] != "UP"):
         return
+    prefix = parts[2]
+    if prefix != "CB" and prefix not in _seen_topic_prefixes:
+        _seen_topic_prefixes.add(prefix)
+        logger.info("New SF topic prefix observed: %s (topic=%s)", prefix, pkt.topic)
     try:
         data = json.loads(pkt.message)
     except Exception:
         return
+
+    # Resolve any pending request whose response carries the same msgId.
+    # Done before the method gate so that getConfigField (and other) replies
+    # land in their futures even though we only fully process getDevSta below.
+    msg_id = data.get("msgId")
+    if msg_id and msg_id in session.pending_requests:
+        future = session.pending_requests[msg_id]
+        if not future.done():
+            future.set_result(data.get("data", {}))
+
     method = data.get("method")
     if method != "getDevSta":
         return
