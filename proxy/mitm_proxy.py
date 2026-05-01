@@ -39,14 +39,22 @@ class ProxySession:
         self._client_writer: Optional[asyncio.StreamWriter] = None
         self.device_state: Dict[str, dict] = {}  # module → current state from getDevSta
         self.last_nonzero_level: Dict[str, int] = {}  # module → last brightness > 0
+        # O# → last full setConfigField block observed in cloud→device traffic.
+        # Used as a fallback when active getConfigField requests time out
+        # (most controllers do not seem to honor those from the proxy side).
+        self.outlet_state: Dict[str, dict] = {}
         # msgId → Future, resolved when the device's UP response carries the
         # same msgId. Used by request_config to await getConfigField replies.
         self.pending_requests: Dict[str, "asyncio.Future[dict]"] = {}
         self._msg_counter: int = 0
 
     def _next_msg_id(self) -> str:
+        # Match the SF cloud's msgId format: 13-digit millisecond timestamp.
+        # A monotonically increasing counter is added so simultaneous requests
+        # from the same session never collide, while keeping the format short
+        # in case the controller validates msgId length.
         self._msg_counter += 1
-        return f"{int(time.time() * 1000)}{self._msg_counter:04d}"
+        return str(int(time.time() * 1000) + self._msg_counter)
 
     async def request_config(self, key_path: list, timeout: float = 3.0) -> dict:
         """Send a getConfigField request to the controller and await the
@@ -188,13 +196,13 @@ class MITMProxy:
         if field.startswith("outlet_") and field[7:].isdigit():
             outlet_num = int(field[7:])
 
-        # PS5/PS10 outlets need the complete current per-outlet block sent
-        # back, not a synthetic skeleton. Actively fetch the controller's
-        # current config via getConfigField so the merge in translate_command
-        # has every field (cycleTime, timePeriod, wateringEnv, bind, …).
-        # If the request fails or times out, fall through with empty state —
-        # translate_command then emits a minimal payload (works for CB,
-        # ignored on PS5/PS10 but at least no crash).
+        # Outlet command: try active fetch first, fall back to passive cache.
+        # 1. Active getConfigField — works on controllers that honor proxy-
+        #    initiated requests; instant accurate state.
+        # 2. Cache from observed cloud→device setConfigField — works once the
+        #    SF App has touched this outlet at least once; uses the last
+        #    block the cloud sent.
+        # 3. Empty → translate_command emits minimal payload (CB-only).
         outlet_state: Optional[dict] = None
         if outlet_num is not None:
             ok = f"O{outlet_num}"
@@ -205,10 +213,17 @@ class MITMProxy:
                     if isinstance(block, dict) and block:
                         outlet_state = {ok: block}
             except asyncio.TimeoutError:
-                logger.warning("[%s] getConfigField timeout for %s", session.device_id, ok)
+                logger.info("[%s] getConfigField timeout for %s — using cached block",
+                            session.device_id, ok)
             except Exception as e:
                 logger.warning("[%s] getConfigField error for %s: %s",
                                session.device_id, ok, e)
+            if outlet_state is None:
+                cached = session.outlet_state.get(ok)
+                if cached:
+                    outlet_state = {ok: cached}
+                    logger.info("[%s] Using cached outlet block for %s",
+                                session.device_id, ok)
 
         payload = translate_command(field, value, session.mac, session.uid, outlet_num,
                                     device_state=session.device_state, subfield=subfield,
@@ -329,6 +344,14 @@ class MITMProxy:
                                             "[DIAG] SF→device outlet command: keyPath=%s params=%s",
                                             keypath, json.dumps(params, separators=(',', ':')),
                                         )
+                                        # Cache full per-outlet block as fallback
+                                        # for when active getConfigField times out
+                                        sess = nonlocal_session[0]
+                                        if sess is not None:
+                                            for k, v in params.items():
+                                                if (k.startswith("O") and k[1:].isdigit()
+                                                        and isinstance(v, dict)):
+                                                    sess.outlet_state[k] = v
                         except Exception as e:
                             # Never let logging break the relay
                             logger.debug("relay_down parse error (non-fatal): %s", e)
