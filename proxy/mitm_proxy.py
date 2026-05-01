@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import ssl
+import time
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -38,6 +39,35 @@ class ProxySession:
         self._client_writer: Optional[asyncio.StreamWriter] = None
         self.device_state: Dict[str, dict] = {}  # module → current state from getDevSta
         self.last_nonzero_level: Dict[str, int] = {}  # module → last brightness > 0
+        # msgId → Future, resolved when the device's UP response carries the
+        # same msgId. Used by request_config to await getConfigField replies.
+        self.pending_requests: Dict[str, "asyncio.Future[dict]"] = {}
+        self._msg_counter: int = 0
+
+    def _next_msg_id(self) -> str:
+        self._msg_counter += 1
+        return f"{int(time.time() * 1000)}{self._msg_counter:04d}"
+
+    async def request_config(self, key_path: list, timeout: float = 3.0) -> dict:
+        """Send a getConfigField request to the controller and await the
+        response data. Returns the `data` dict from the UP reply, or raises
+        TimeoutError if the controller does not respond in time."""
+        msg_id = self._next_msg_id()
+        payload = {
+            "method": "getConfigField",
+            "pid": self.mac,
+            "params": {"keyPath": key_path},
+            "msgId": msg_id,
+            "uid": self.uid,
+        }
+        loop = asyncio.get_event_loop()
+        future: "asyncio.Future[dict]" = loop.create_future()
+        self.pending_requests[msg_id] = future
+        try:
+            await self.inject(payload)
+            return await asyncio.wait_for(future, timeout=timeout)
+        finally:
+            self.pending_requests.pop(msg_id, None)
 
     def set_upstream(self, writer: asyncio.StreamWriter) -> None:
         self._upstream_writer = writer
@@ -158,9 +188,32 @@ class MITMProxy:
         if field.startswith("outlet_") and field[7:].isdigit():
             outlet_num = int(field[7:])
 
+        # PS5/PS10 outlets need the complete current per-outlet block sent
+        # back, not a synthetic skeleton. Actively fetch the controller's
+        # current config via getConfigField so the merge in translate_command
+        # has every field (cycleTime, timePeriod, wateringEnv, bind, …).
+        # If the request fails or times out, fall through with empty state —
+        # translate_command then emits a minimal payload (works for CB,
+        # ignored on PS5/PS10 but at least no crash).
+        outlet_state: Optional[dict] = None
+        if outlet_num is not None:
+            ok = f"O{outlet_num}"
+            try:
+                data = await session.request_config(["outlet", ok], timeout=3.0)
+                if isinstance(data, dict):
+                    block = data.get(ok, data)
+                    if isinstance(block, dict) and block:
+                        outlet_state = {ok: block}
+            except asyncio.TimeoutError:
+                logger.warning("[%s] getConfigField timeout for %s", session.device_id, ok)
+            except Exception as e:
+                logger.warning("[%s] getConfigField error for %s: %s",
+                               session.device_id, ok, e)
+
         payload = translate_command(field, value, session.mac, session.uid, outlet_num,
                                     device_state=session.device_state, subfield=subfield,
-                                    last_nonzero_level=session.last_nonzero_level)
+                                    last_nonzero_level=session.last_nonzero_level,
+                                    outlet_state=outlet_state)
         if payload:
             await session.inject(payload)
 
@@ -336,6 +389,16 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
         data = json.loads(pkt.message)
     except Exception:
         return
+
+    # Resolve any pending request whose response carries the same msgId.
+    # Done before the method gate so that getConfigField (and other) replies
+    # land in their futures even though we only fully process getDevSta below.
+    msg_id = data.get("msgId")
+    if msg_id and msg_id in session.pending_requests:
+        future = session.pending_requests[msg_id]
+        if not future.done():
+            future.set_result(data.get("data", {}))
+
     method = data.get("method")
     if method != "getDevSta":
         return
