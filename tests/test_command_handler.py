@@ -22,22 +22,21 @@ def test_outlet_off():
 
 def test_outlet_sends_full_default_block_for_ps5_ps10_compatibility():
     # PS5/PS10 ignore minimal {modeType, mOnOff} commands and need the full
-    # outlet block. We send a complete default block on every HA toggle so
-    # the command is authoritative, accepting that any user-configured
-    # cycleTime/timePeriod/tempAdd/humiAdd/wateringEnv from the SF App gets
-    # overwritten — HA is the source of truth in this setup.
+    # outlet block. The shape mirrors a real SF App capture for a simple
+    # (non-watering) outlet: cycleTime only carries weekmask, timePeriod has
+    # exactly 9 entries (4 default-active, 5 disabled), tempAdd/humiAdd are
+    # present even when zero. Sending this authoritatively overwrites any
+    # user-configured cycle/schedule from the SF App, which is intended.
     r = translate_command("outlet_3", "ON", "AABBCC", "uid1", outlet_num=3)
     out = r["params"]["O3"]
     assert out["mOnOff"] == 1
     assert out["modeType"] == 0
-    # All required fields the controller expects must be present
-    assert "cycleTime" in out
-    assert "timePeriod" in out
-    assert "tempAdd" in out
-    assert "humiAdd" in out
-    # Default cycleTime: no automated cycling
-    assert out["cycleTime"]["openDur"] == 0
-    assert out["cycleTime"]["closeDur"] == 0
+    assert out["cycleTime"] == {"weekmask": 127}
+    assert len(out["timePeriod"]) == 9
+    assert out["timePeriod"][0] == {"weekmask": 127}
+    assert out["timePeriod"][4] == {"enabled": 0, "weekmask": 127}
+    assert out["tempAdd"] == 0
+    assert out["humiAdd"] == 0
 
 
 # ── Light / Light2 ──────────────────────────────────────────────────────────

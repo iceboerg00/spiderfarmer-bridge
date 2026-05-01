@@ -37,16 +37,28 @@ def translate_command(
 
     # ── Outlet ────────────────────────────────────────────────────────────────
     # PS5/PS10 controllers ignore minimal {modeType, mOnOff} commands — they
-    # need a complete per-outlet block. Send a full default block on every HA
-    # toggle so the command is authoritative; this overwrites any per-outlet
-    # cycle/temp/humi schedule the user had set in the SF App, which is the
-    # intended behavior when controlling from HA.
+    # need a complete per-outlet block. Mirror the shape captured from real
+    # SF App traffic for a "simple" (non-watering) outlet:
+    #   cycleTime is just {weekmask}, no openDur/closeDur/times
+    #   timePeriod is exactly 9 entries (4 active-default, 5 disabled)
+    # Sending the command authoritatively from HA overwrites any schedule the
+    # user had configured in the SF App, which is the intended behavior here.
     if outlet_num is not None:
         ok = f"O{outlet_num}"
         return _build(mac, uid, "outlet", ok, {
             "modeType": 0,
-            "cycleTime": {"weekmask": 127, "openDur": 0, "closeDur": 0, "times": 0},
-            "timePeriod": [{"weekmask": 127}],
+            "cycleTime": {"weekmask": 127},
+            "timePeriod": [
+                {"weekmask": 127},
+                {"weekmask": 127},
+                {"weekmask": 127},
+                {"weekmask": 127},
+                {"enabled": 0, "weekmask": 127},
+                {"enabled": 0, "weekmask": 127},
+                {"enabled": 0, "weekmask": 127},
+                {"enabled": 0, "weekmask": 127},
+                {"enabled": 0, "weekmask": 127},
+            ],
             "tempAdd": 0,
             "humiAdd": 0,
             "mOnOff": _onoff(value),
