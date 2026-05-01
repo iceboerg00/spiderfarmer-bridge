@@ -31,13 +31,26 @@ def translate_command(
     device_state: Optional[dict] = None,
     subfield: Optional[str] = None,
     last_nonzero_level: Optional[dict] = None,
+    outlet_state: Optional[dict] = None,
 ) -> Optional[dict]:
     state = device_state or {}
     last_levels = last_nonzero_level or {}
+    outlets = outlet_state or {}
 
     # ── Outlet ────────────────────────────────────────────────────────────────
+    # PS5/PS10 controllers ignore minimal {modeType, mOnOff} commands — they
+    # need the full per-outlet block (cycleTime, timePeriod, tempAdd, humiAdd,
+    # optionally wateringEnv/bind/extra). When a cached block from observed
+    # server→device traffic is available, replay it with mOnOff overridden;
+    # else fall back to minimal (works for CB).
     if outlet_num is not None:
         ok = f"O{outlet_num}"
+        cached = outlets.get(ok)
+        if cached:
+            block = dict(cached)
+            block["mOnOff"] = _onoff(value)
+            block["modeType"] = 0
+            return _build(mac, uid, "outlet", ok, block)
         return _build(mac, uid, "outlet", ok, {"modeType": 0, "mOnOff": _onoff(value)})
 
     # ── Light / Light2 ────────────────────────────────────────────────────────

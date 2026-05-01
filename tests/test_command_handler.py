@@ -20,6 +20,81 @@ def test_outlet_off():
     assert r["params"]["O1"]["mOnOff"] == 0
 
 
+def test_outlet_uses_cached_full_block_when_available():
+    # PS5/PS10 outlets ignore minimal {modeType, mOnOff} commands. Sniffed app
+    # traffic shows the SF App always sends the full block (cycleTime,
+    # timePeriod, tempAdd, humiAdd, …). When we have observed such a block
+    # from server→device traffic, reuse it and only flip mOnOff.
+    cached = {
+        "O3": {
+            "modeType": 0,
+            "cycleTime": {"weekmask": 127, "openDur": 120, "closeDur": 300, "times": 8},
+            "timePeriod": [{"weekmask": 127}, {"weekmask": 127}],
+            "tempAdd": 2,
+            "humiAdd": 2,
+            "mOnOff": 0,
+        }
+    }
+    r = translate_command("outlet_3", "ON", "AABBCC", "uid1",
+                          outlet_num=3, outlet_state=cached)
+    out = r["params"]["O3"]
+    assert out["mOnOff"] == 1
+    assert out["modeType"] == 0
+    assert out["cycleTime"] == cached["O3"]["cycleTime"]
+    assert out["timePeriod"] == cached["O3"]["timePeriod"]
+    assert out["tempAdd"] == 2
+    assert out["humiAdd"] == 2
+
+
+def test_outlet_force_manual_mode_even_when_cache_has_other_mode():
+    # Defensive: even if the cached block has modeType != 0 (e.g. captured at
+    # an instant the app set scheduled mode), HA control should always send
+    # modeType=0 so the controller honors the on/off command.
+    cached = {"O1": {"modeType": 1, "mOnOff": 1, "cycleTime": {"weekmask": 127}}}
+    r = translate_command("outlet_1", "OFF", "AABBCC", "uid1",
+                          outlet_num=1, outlet_state=cached)
+    assert r["params"]["O1"]["modeType"] == 0
+    assert r["params"]["O1"]["mOnOff"] == 0
+    # cycleTime preserved
+    assert r["params"]["O1"]["cycleTime"] == {"weekmask": 127}
+
+
+def test_outlet_preserves_optional_watering_and_bind_blocks():
+    # Outlets bound to a sensor / linked to watering carry wateringEnv, bind,
+    # and extra blocks. These must round-trip through the command unchanged.
+    cached = {
+        "O3": {
+            "modeType": 0,
+            "cycleTime": {"weekmask": 127},
+            "timePeriod": [{"weekmask": 127}],
+            "tempAdd": 1,
+            "humiAdd": 1,
+            "wateringEnv": {
+                "period": [{"enabled": 1, "startTime": 28800, "endTime": 72000}],
+                "extra": {"enabled": 0},
+            },
+            "bind": {"bindType": 1, "id": "373531370F308443"},
+            "mOnOff": 1,
+        }
+    }
+    r = translate_command("outlet_3", "OFF", "AABBCC", "uid1",
+                          outlet_num=3, outlet_state=cached)
+    out = r["params"]["O3"]
+    assert out["mOnOff"] == 0
+    assert out["wateringEnv"] == cached["O3"]["wateringEnv"]
+    assert out["bind"] == cached["O3"]["bind"]
+
+
+def test_outlet_falls_back_to_minimal_when_no_cache():
+    # Without a cached block the call should still succeed (fallback). The
+    # CB controller accepts the minimal form; PS5/PS10 will ignore it but the
+    # next time the user toggles in the SF App we will learn the full block.
+    r = translate_command("outlet_2", "ON", "AABBCC", "uid1",
+                          outlet_num=2, outlet_state={})
+    assert r["params"]["O2"]["mOnOff"] == 1
+    assert r["params"]["O2"]["modeType"] == 0
+
+
 # ── Light / Light2 ──────────────────────────────────────────────────────────
 
 def test_light_full_json_payload_with_ppfd_mode():
