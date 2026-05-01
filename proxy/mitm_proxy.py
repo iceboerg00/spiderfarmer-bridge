@@ -239,6 +239,10 @@ class MITMProxy:
                 # last command sticky against the SF cloud's corrections, but
                 # that fought legitimate app/cloud commands and made the lamp
                 # uncontrollable except from bluetooth-paired sessions.
+                # Diagnostic-only parsing here logs outlet-related commands
+                # from the SF cloud/app so we can compare what the official
+                # app sends vs what we send for PS5/PS10 outlet control.
+                buf_down = b""
                 try:
                     while True:
                         try:
@@ -247,11 +251,35 @@ class MITMProxy:
                             break
                         if not data:
                             break
+                        # Forward bytes unchanged FIRST, then try to parse for logging
                         try:
                             client_writer.write(data)
                             await client_writer.drain()
                         except Exception:
                             break
+                        try:
+                            buf_down += data
+                            packets, buf_down = parse_packets(buf_down)
+                            for p in packets:
+                                if (p.packet_type == MQTT_PUBLISH and p.topic
+                                        and "/API/DOWN/" in p.topic and p.message):
+                                    try:
+                                        body = json.loads(p.message)
+                                    except Exception:
+                                        continue
+                                    if body.get("method") != "setConfigField":
+                                        continue
+                                    params = body.get("params", {})
+                                    keypath = params.get("keyPath", [])
+                                    if "outlet" in keypath:
+                                        logger.info(
+                                            "[DIAG] SF→device outlet command: keyPath=%s params=%s",
+                                            keypath, json.dumps(params, separators=(',', ':')),
+                                        )
+                        except Exception as e:
+                            # Never let logging break the relay
+                            logger.debug("relay_down parse error (non-fatal): %s", e)
+                            buf_down = b""
                 finally:
                     # Signal EOF to client so relay_up unblocks if upstream disconnects first
                     try:
