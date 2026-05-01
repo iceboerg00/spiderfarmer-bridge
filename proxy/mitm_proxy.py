@@ -38,7 +38,6 @@ class ProxySession:
         self._client_writer: Optional[asyncio.StreamWriter] = None
         self.device_state: Dict[str, dict] = {}  # module → current state from getDevSta
         self.last_nonzero_level: Dict[str, int] = {}  # module → last brightness > 0
-        self.outlet_state: Dict[str, dict] = {}  # O# → last full setConfigField block from cloud/app
 
     def set_upstream(self, writer: asyncio.StreamWriter) -> None:
         self._upstream_writer = writer
@@ -161,8 +160,7 @@ class MITMProxy:
 
         payload = translate_command(field, value, session.mac, session.uid, outlet_num,
                                     device_state=session.device_state, subfield=subfield,
-                                    last_nonzero_level=session.last_nonzero_level,
-                                    outlet_state=session.outlet_state)
+                                    last_nonzero_level=session.last_nonzero_level)
         if payload:
             await session.inject(payload)
 
@@ -274,18 +272,10 @@ class MITMProxy:
                                     params = body.get("params", {})
                                     keypath = params.get("keyPath", [])
                                     if "outlet" in keypath:
-                                        # Learn per-outlet config from observed app/cloud
-                                        # commands so HA can replay it with mOnOff flipped.
-                                        sess = nonlocal_session[0]
-                                        if sess is not None:
-                                            for k, v in params.items():
-                                                if (k.startswith("O") and k[1:].isdigit()
-                                                        and isinstance(v, dict)):
-                                                    sess.outlet_state[k] = v
-                                                    logger.info(
-                                                        "[%s] Cached outlet block: %s",
-                                                        sess.device_id, k,
-                                                    )
+                                        logger.info(
+                                            "[DIAG] SF→device outlet command: keyPath=%s params=%s",
+                                            keypath, json.dumps(params, separators=(',', ':')),
+                                        )
                         except Exception as e:
                             # Never let logging break the relay
                             logger.debug("relay_down parse error (non-fatal): %s", e)

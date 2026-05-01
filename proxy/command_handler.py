@@ -31,27 +31,26 @@ def translate_command(
     device_state: Optional[dict] = None,
     subfield: Optional[str] = None,
     last_nonzero_level: Optional[dict] = None,
-    outlet_state: Optional[dict] = None,
 ) -> Optional[dict]:
     state = device_state or {}
     last_levels = last_nonzero_level or {}
-    outlets = outlet_state or {}
 
     # ── Outlet ────────────────────────────────────────────────────────────────
     # PS5/PS10 controllers ignore minimal {modeType, mOnOff} commands — they
-    # need the full per-outlet block (cycleTime, timePeriod, tempAdd, humiAdd,
-    # optionally wateringEnv/bind/extra). When a cached block from observed
-    # server→device traffic is available, replay it with mOnOff overridden;
-    # else fall back to minimal (works for CB).
+    # need a complete per-outlet block. Send a full default block on every HA
+    # toggle so the command is authoritative; this overwrites any per-outlet
+    # cycle/temp/humi schedule the user had set in the SF App, which is the
+    # intended behavior when controlling from HA.
     if outlet_num is not None:
         ok = f"O{outlet_num}"
-        cached = outlets.get(ok)
-        if cached:
-            block = dict(cached)
-            block["mOnOff"] = _onoff(value)
-            block["modeType"] = 0
-            return _build(mac, uid, "outlet", ok, block)
-        return _build(mac, uid, "outlet", ok, {"modeType": 0, "mOnOff": _onoff(value)})
+        return _build(mac, uid, "outlet", ok, {
+            "modeType": 0,
+            "cycleTime": {"weekmask": 127, "openDur": 0, "closeDur": 0, "times": 0},
+            "timePeriod": [{"weekmask": 127}],
+            "tempAdd": 0,
+            "humiAdd": 0,
+            "mOnOff": _onoff(value),
+        })
 
     # ── Light / Light2 ────────────────────────────────────────────────────────
     # The SF cloud always sends modeType=0 (Manual) for direct app control —
