@@ -344,6 +344,23 @@ def test_fan_subfield_targets_blower_keypath_when_field_is_blower():
     assert r["params"]["blower"]["maxSpeed"] == 5
 
 
+def test_blower_schedule_speed_clamped_to_100_not_10():
+    # Fan clamps to 10, blower clamps to 100 — same subfield, different
+    # range. HA's discovery declares the matching bounds for each.
+    fan = translate_command("fan", "150", "AABBCC", "uid1",
+                            subfield="schedule_speed", fan_state={})
+    blower = translate_command("blower", "150", "AABBCC", "uid1",
+                               subfield="schedule_speed", fan_state={})
+    assert fan["params"]["fan"]["maxSpeed"] == 10
+    assert blower["params"]["blower"]["maxSpeed"] == 100
+
+
+def test_blower_standby_speed_clamped_to_100():
+    r = translate_command("blower", "200", "AABBCC", "uid1",
+                          subfield="standby_speed", fan_state={})
+    assert r["params"]["blower"]["minSpeed"] == 100
+
+
 # ── Light app-parity (subfield writes) ─────────────────────────────────────
 
 def _light_block(**overrides):

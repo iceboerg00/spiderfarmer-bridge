@@ -287,15 +287,19 @@ def translate_command(
             # depending on mode: mLevel in Manual, maxSpeed in
             # Schedule/Cycle/Environment. Write both so a single HA "Speed"
             # entity actually changes the fan regardless of current mode.
+            # Range is 1-10 for Fan Circulation, 1-100 for Fan Exhaust
+            # (blower) — the discovery payload sets the same bounds in HA.
+            speed_max = 100 if field == "blower" else 10
             try:
-                v = max(1, min(10, int(float(value))))
+                v = max(1, min(speed_max, int(float(value))))
             except (ValueError, TypeError):
                 return None
             block["maxSpeed"] = v
             block["mLevel"] = v
         elif subfield == "standby_speed":
+            speed_max = 100 if field == "blower" else 10
             try:
-                block["minSpeed"] = max(0, min(10, int(float(value))))
+                block["minSpeed"] = max(0, min(speed_max, int(float(value))))
             except (ValueError, TypeError):
                 return None
         elif subfield == "cycle_start":

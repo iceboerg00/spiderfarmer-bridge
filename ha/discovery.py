@@ -339,19 +339,23 @@ def _light_extras(device_id: str, module: str, friendly: str, cfg: dict) -> list
     ]
 
 
-def _fan_extras(device_id: str, module: str, friendly: str, cfg: dict) -> list:
+def _fan_extras(device_id: str, module: str, friendly: str, cfg: dict,
+                speed_max: int = 10, oscillation: bool = True,
+                natural_wind: bool = True) -> list:
     """Sub-device entities mirroring the SF App's Lüfter-Einstellungen screen
     for one fan/blower. Four sub-devices linked via via_device:
-      - Schedule Mode: schedule_start, schedule_end (+ aliased natural_wind)
+      - Schedule Mode: schedule_start, schedule_end [+ aliased natural_wind]
       - Cycle Mode: cycle_start, cycle_run, cycle_off, cycle_times
-        (+ aliased natural_wind)
+        [+ aliased natural_wind]
       - Environment Mode: submode dropdown (5 env variants) + min/max speed
-        + aliased natural_wind. Mirrors the SF App's Umweltmodus tab where
-        the submode dropdown switches between the 5 env variants in one
-        place.
-      - Speeds: schedule_speed, standby_speed, oscillation_level, natural_wind.
-    Natural Wind is exposed under each sub-device with distinct unique_ids
-    but shared wire topics so all four entities stay in sync."""
+        [+ aliased natural_wind]. Mirrors the SF App's Umweltmodus tab.
+      - Speeds: schedule_speed, standby_speed [+ oscillation_level]
+        [+ natural_wind].
+    `speed_max` parameterizes the speed range (10 for Fan Circulation,
+    100 for Fan Exhaust/blower). `oscillation=False` skips the
+    oscillation_level entity (blower has no shaking head). `natural_wind=
+    False` skips natural_wind across all four cards (blower has no
+    natural-wind feature either)."""
     parent_id = f"spiderfarmer_{device_id}"
     sched_dev = _settings_subdevice(parent_id, friendly, f"{module}_schedule",
                                     "Schedule Mode", "Schedule settings")
@@ -362,14 +366,20 @@ def _fan_extras(device_id: str, module: str, friendly: str, cfg: dict) -> list:
     speeds_dev = _settings_subdevice(parent_id, friendly, f"{module}_speeds",
                                      "Speeds", "Speed settings")
     HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
-    return [
+
+    out: list = [
         # Schedule Mode
         _text_path(device_id, module, "schedule_start",
                    "Start Time", HHMM, cfg, device=sched_dev),
         _text_path(device_id, module, "schedule_end",
                    "End Time", HHMM, cfg, device=sched_dev),
-        _switch_path_aliased(device_id, module, "natural_wind", "schedule",
-                             "Natural Wind", cfg, device=sched_dev),
+    ]
+    if natural_wind:
+        out.append(
+            _switch_path_aliased(device_id, module, "natural_wind", "schedule",
+                                 "Natural Wind", cfg, device=sched_dev),
+        )
+    out += [
         # Cycle Mode
         _text_path(device_id, module, "cycle_start",
                    "Start Time", HHMM, cfg, device=cycle_dev),
@@ -379,27 +389,44 @@ def _fan_extras(device_id: str, module: str, friendly: str, cfg: dict) -> list:
                      "Off Time", 0, 1440, 1, cfg, unit="min", device=cycle_dev),
         _number_path(device_id, module, "cycle_times",
                      "Cycles", 1, 100, 1, cfg, device=cycle_dev),
-        _switch_path_aliased(device_id, module, "natural_wind", "cycle",
-                             "Natural Wind", cfg, device=cycle_dev),
+    ]
+    if natural_wind:
+        out.append(
+            _switch_path_aliased(device_id, module, "natural_wind", "cycle",
+                                 "Natural Wind", cfg, device=cycle_dev),
+        )
+    out += [
         # Environment Mode
         _select_path(device_id, module, "env_submode",
                      "Submode", _FAN_ENV_SUBMODES, cfg, device=env_dev),
         _number_path_aliased(device_id, module, "schedule_speed", "env",
-                             "Speed", 1, 10, 1, cfg, device=env_dev),
+                             "Speed", 1, speed_max, 1, cfg, device=env_dev),
         _number_path_aliased(device_id, module, "standby_speed", "env",
-                             "Standby Speed", 0, 10, 1, cfg, device=env_dev),
-        _switch_path_aliased(device_id, module, "natural_wind", "env",
-                             "Natural Wind", cfg, device=env_dev),
-        # Speeds (catch-all fan settings — applies across all modes)
-        _number_path(device_id, module, "schedule_speed",
-                     "Speed", 1, 10, 1, cfg, device=speeds_dev),
-        _number_path(device_id, module, "standby_speed",
-                     "Standby Speed", 0, 10, 1, cfg, device=speeds_dev),
-        _number_path(device_id, module, "oscillation_level",
-                     "Oscillation", 0, 10, 1, cfg, device=speeds_dev),
-        _switch_path(device_id, module, "natural_wind",
-                     "Natural Wind", cfg, device=speeds_dev),
+                             "Standby Speed", 0, speed_max, 1, cfg, device=env_dev),
     ]
+    if natural_wind:
+        out.append(
+            _switch_path_aliased(device_id, module, "natural_wind", "env",
+                                 "Natural Wind", cfg, device=env_dev),
+        )
+    out += [
+        # Speeds (catch-all — applies across all modes)
+        _number_path(device_id, module, "schedule_speed",
+                     "Speed", 1, speed_max, 1, cfg, device=speeds_dev),
+        _number_path(device_id, module, "standby_speed",
+                     "Standby Speed", 0, speed_max, 1, cfg, device=speeds_dev),
+    ]
+    if oscillation:
+        out.append(
+            _number_path(device_id, module, "oscillation_level",
+                         "Oscillation", 0, 10, 1, cfg, device=speeds_dev),
+        )
+    if natural_wind:
+        out.append(
+            _switch_path(device_id, module, "natural_wind",
+                         "Natural Wind", cfg, device=speeds_dev),
+        )
+    return out
 
 
 def publish_discovery_for_device(
@@ -428,14 +455,20 @@ def publish_discovery_for_device(
     entities.append(_light(device_id, "light2", "Light 2", device_cfg))
 
     # ── Fans ──────────────────────────────────────────────────────────────────
-    entities.append(_fan(device_id, "blower", "Fan Exhaust", 100, device_cfg))
-    # Fan Circulation gets the new app-parity entities: preset_modes on the
-    # main fan plus three sub-devices (Schedule Mode, Cycle Mode, Speeds)
-    # and a switch for natural wind. Fan Exhaust (blower) is intentionally
-    # left as the simple variant for now — same pattern, follow-up.
+    # Fan Circulation: oscillating tent fan (speed 1-10, has shake head and
+    # natural-wind feature). Fan Exhaust/blower: extraction fan (speed
+    # 1-100, no oscillation, no natural-wind). Both get the same preset
+    # mode dropdown and the same four settings sub-devices, just with
+    # speed range and the irrelevant entities suppressed for the blower.
     entities.append(_fan(device_id, "fan", "Fan Circulation", 10, device_cfg,
                          preset_modes=True))
-    entities += _fan_extras(device_id, "fan", "Fan", device_cfg)
+    entities += _fan_extras(device_id, "fan", "Fan", device_cfg,
+                            speed_max=10)
+    entities.append(_fan(device_id, "blower", "Fan Exhaust", 100, device_cfg,
+                         preset_modes=True))
+    entities += _fan_extras(device_id, "blower", "Fan Exhaust", device_cfg,
+                            speed_max=100, oscillation=False,
+                            natural_wind=False)
 
     # ── Soil sensors (average) ────────────────────────────────────────────────
     entities += [

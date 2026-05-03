@@ -141,6 +141,10 @@ def test_publish_discovery_device_info_consistent(mocker):
         ("spiderfarmer_ggs_1_fan_cycle",),
         ("spiderfarmer_ggs_1_fan_env",),
         ("spiderfarmer_ggs_1_fan_speeds",),
+        ("spiderfarmer_ggs_1_blower_schedule",),
+        ("spiderfarmer_ggs_1_blower_cycle",),
+        ("spiderfarmer_ggs_1_blower_env",),
+        ("spiderfarmer_ggs_1_blower_speeds",),
         ("spiderfarmer_ggs_1_light_schedule",),
         ("spiderfarmer_ggs_1_light_ppfd",),
     }
@@ -335,6 +339,36 @@ def test_fan_env_sub_device_includes_speeds_and_natural_wind(mocker):
 
     nw_env = pubs["homeassistant/switch/spiderfarmer_ggs_1_fan_natural_wind_env/config"]
     assert nw_env["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_env"]
+
+
+def test_blower_gets_full_app_parity_minus_oscillation_and_natural_wind(mocker):
+    # Blower (Fan Exhaust) is the same set of cards as the Fan Circulation,
+    # just with speed range 1-100 and without the oscillation_level /
+    # natural_wind entities (the exhaust fan has no shaking head and no
+    # natural-wind feature).
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    pubs = _publish_calls(client)
+    topics = set(pubs)
+
+    # Same four sub-devices as fan
+    for slug in ("schedule", "cycle", "env", "speeds"):
+        assert any(f"blower_{slug}" in str(p["device"]["identifiers"])
+                   for p in pubs.values()), f"missing sub-device blower_{slug}"
+
+    # Speed entities exist with 1-100 range
+    sp = pubs["homeassistant/number/spiderfarmer_ggs_1_blower_schedule_speed/config"]
+    assert sp["min"] == 1 and sp["max"] == 100
+    sb = pubs["homeassistant/number/spiderfarmer_ggs_1_blower_standby_speed/config"]
+    assert sb["min"] == 0 and sb["max"] == 100
+
+    # Env-mode submode dropdown
+    assert "homeassistant/select/spiderfarmer_ggs_1_blower_env_submode/config" in topics
+
+    # No oscillation_level, no natural_wind anywhere on blower
+    for t in topics:
+        assert "blower_oscillation_level" not in t, t
+        assert "blower_natural_wind" not in t, t
 
 
 def test_natural_wind_appears_in_schedule_cycle_env_and_speeds(mocker):
