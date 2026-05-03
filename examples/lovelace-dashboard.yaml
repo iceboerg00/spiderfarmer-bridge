@@ -32,6 +32,12 @@ views:
             name: Light 1
             features:
               - type: light-brightness
+          # Dedicated mode picker — selecting an effect here swaps the
+          # settings card below.
+          - type: tile
+            entity: light.ggs_light_1
+            name: Mode
+            features:
               - type: light-effect
 
           # Schedule Mode — only visible when light effect is "Schedule"
@@ -107,6 +113,12 @@ views:
             name: Fan Circulation
             features:
               - type: fan-speed
+          # Dedicated mode picker — selecting a preset here swaps the
+          # settings card below.
+          - type: tile
+            entity: fan.ggs_fan_circulation
+            name: Mode
+            features:
               - type: fan-preset-modes
                 style: dropdown
 
@@ -201,6 +213,12 @@ views:
             name: Fan Exhaust
             features:
               - type: fan-speed
+          # Dedicated mode picker — selecting a preset here swaps the
+          # settings card below.
+          - type: tile
+            entity: fan.ggs_fan_exhaust
+            name: Mode
+            features:
               - type: fan-preset-modes
                 style: dropdown
 
