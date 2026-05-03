@@ -154,10 +154,16 @@ def translate_command(
                 tp.append({})
             tp[0]["endTime"] = _hhmm_to_seconds(value)
         elif subfield == "schedule_speed":
+            # The controller uses different fields for the active speed
+            # depending on mode: mLevel in Manual, maxSpeed in
+            # Schedule/Cycle/Environment. Write both so a single HA "Speed"
+            # entity actually changes the fan regardless of current mode.
             try:
-                block["maxSpeed"] = max(1, min(10, int(float(value))))
+                v = max(1, min(10, int(float(value))))
             except (ValueError, TypeError):
                 return None
+            block["maxSpeed"] = v
+            block["mLevel"] = v
         elif subfield == "standby_speed":
             try:
                 block["minSpeed"] = max(0, min(10, int(float(value))))

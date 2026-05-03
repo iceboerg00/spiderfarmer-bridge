@@ -273,6 +273,16 @@ def test_fan_schedule_speed_clamped_to_10():
     assert r["params"]["fan"]["maxSpeed"] == 10
 
 
+def test_fan_schedule_speed_also_writes_mlevel_for_manual_mode():
+    # Manual mode reads mLevel, Schedule/Cycle/Env modes read maxSpeed.
+    # The single HA "Speed" entity must change the fan regardless of
+    # which mode is currently active, so we set both.
+    r = translate_command("fan", "5", "AABBCC", "uid1",
+                          subfield="schedule_speed", fan_state={})
+    assert r["params"]["fan"]["maxSpeed"] == 5
+    assert r["params"]["fan"]["mLevel"] == 5
+
+
 def test_fan_standby_speed_zero_means_aus():
     r = translate_command("fan", "0", "AABBCC", "uid1",
                           subfield="standby_speed", fan_state={})
