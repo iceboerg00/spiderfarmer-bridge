@@ -14,7 +14,10 @@ from .mqtt_parser import (
     MQTT_PUBLISH, MQTT_CONNECT,
 )
 from .normalizer import normalize_status
-from ha.discovery import publish_soil_sensor_discovery as _publish_soil_sensor_discovery
+from ha.discovery import (
+    publish_soil_sensor_discovery as _publish_soil_sensor_discovery,
+    unpublish_outlet_discovery as _unpublish_outlet_discovery,
+)
 from .command_handler import translate_command
 
 logger = logging.getLogger(__name__)
@@ -30,7 +33,8 @@ _seen_topic_prefixes: set = set()
 class ProxySession:
     """Represents one active GGS Controller connection."""
 
-    def __init__(self, device_id: str, mac: str, uid: str, mqtt_client: mqtt.Client):
+    def __init__(self, device_id: str, mac: str, uid: str,
+                 mqtt_client: mqtt.Client, cache_dir: Optional[Path] = None):
         self.device_id = device_id
         self.mac = mac
         self.uid = uid
@@ -44,14 +48,62 @@ class ProxySession:
         # value; using the wrong prefix means our injects are silently
         # ignored by the controller that subscribes elsewhere.
         self.down_topic_prefix: str = "CB"
-        # O# → last full setConfigField block observed in cloud→device traffic.
-        # Used as a fallback when active getConfigField requests time out
-        # (most controllers do not seem to honor those from the proxy side).
-        self.outlet_state: Dict[str, dict] = {}
         # msgId → Future, resolved when the device's UP response carries the
         # same msgId. Used by request_config to await getConfigField replies.
         self.pending_requests: Dict[str, "asyncio.Future[dict]"] = {}
         self._msg_counter: int = 0
+        # O# → last full setConfigField block observed in cloud→device traffic.
+        # Used as a fallback when active getConfigField requests time out
+        # (most controllers do not seem to honor those from the proxy side).
+        # Persisted to disk per device_id so the user does not have to
+        # re-train each outlet via the SF App after every Pi/proxy restart.
+        self._cache_dir = cache_dir
+        self.outlet_state: Dict[str, dict] = self._load_outlet_cache()
+        # Static discovery publishes outlets 1..10 unconditionally; once the
+        # controller reports its actual outlet set we unpublish the rest.
+        # Done at most once per session; PS5 has 5, PS10 has 10, CB has 0.
+        self._outlet_discovery_pruned: bool = False
+
+    def _cache_file(self) -> Optional[Path]:
+        if self._cache_dir is None:
+            return None
+        return self._cache_dir / "outlet_cache.json"
+
+    def _load_outlet_cache(self) -> Dict[str, dict]:
+        f = self._cache_file()
+        if f is None or not f.exists():
+            return {}
+        try:
+            payload = json.loads(f.read_text(encoding="utf-8"))
+            section = payload.get(self.device_id, {})
+            if isinstance(section, dict):
+                logger.info("[%s] Loaded %d outlet block(s) from cache",
+                            self.device_id, len(section))
+                return section
+        except Exception as e:
+            logger.warning("[%s] Failed to load outlet cache: %s", self.device_id, e)
+        return {}
+
+    def _save_outlet_cache(self) -> None:
+        f = self._cache_file()
+        if f is None:
+            return
+        try:
+            f.parent.mkdir(parents=True, exist_ok=True)
+            payload: Dict[str, dict] = {}
+            if f.exists():
+                try:
+                    payload = json.loads(f.read_text(encoding="utf-8"))
+                    if not isinstance(payload, dict):
+                        payload = {}
+                except Exception:
+                    payload = {}
+            payload[self.device_id] = self.outlet_state
+            tmp = f.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+            tmp.replace(f)
+        except Exception as e:
+            logger.warning("[%s] Failed to write outlet cache: %s", self.device_id, e)
 
     def _next_msg_id(self) -> str:
         # Match the SF cloud's msgId format: 13-digit millisecond timestamp.
@@ -120,6 +172,10 @@ class MITMProxy:
         self._config_path = config_path
         self._sessions: Dict[str, ProxySession] = {}
         self._known_soil_ids: Dict[str, set] = {}  # device_id → set of seen sensor IDs
+        # Persistent cache directory for outlet blocks. Defaults to ./data
+        # relative to the install dir; configurable via proxy.cache_dir.
+        cache_dir_str = config.get("proxy", {}).get("cache_dir", "data")
+        self._cache_dir: Optional[Path] = Path(cache_dir_str) if cache_dir_str else None
 
     def build_server_ssl_ctx(self) -> ssl.SSLContext:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -202,34 +258,35 @@ class MITMProxy:
         if field.startswith("outlet_") and field[7:].isdigit():
             outlet_num = int(field[7:])
 
-        # Outlet command: try active fetch first, fall back to passive cache.
-        # 1. Active getConfigField — works on controllers that honor proxy-
-        #    initiated requests; instant accurate state.
-        # 2. Cache from observed cloud→device setConfigField — works once the
-        #    SF App has touched this outlet at least once; uses the last
-        #    block the cloud sent.
-        # 3. Empty → translate_command emits minimal payload (CB-only).
+        # Outlet command: prefer the passive cache when available (instant),
+        # only do the active getConfigField roundtrip when the outlet has
+        # never been observed. Most PS5/PS10 controllers ignore proxy-
+        # originated getConfigField anyway, so doing it on every toggle just
+        # wasted a 3-second timeout per click.
+        # Order:
+        #   1. Cache hit → use it directly, no roundtrip
+        #   2. Cache miss → try active getConfigField (controllers that honor
+        #                   it answer fast)
+        #   3. Both empty → translate_command emits the minimal payload (CB-only)
         outlet_state: Optional[dict] = None
         if outlet_num is not None:
             ok = f"O{outlet_num}"
-            try:
-                data = await session.request_config(["outlet", ok], timeout=3.0)
-                if isinstance(data, dict):
-                    block = data.get(ok, data)
-                    if isinstance(block, dict) and block:
-                        outlet_state = {ok: block}
-            except asyncio.TimeoutError:
-                logger.info("[%s] getConfigField timeout for %s — using cached block",
-                            session.device_id, ok)
-            except Exception as e:
-                logger.warning("[%s] getConfigField error for %s: %s",
-                               session.device_id, ok, e)
-            if outlet_state is None:
-                cached = session.outlet_state.get(ok)
-                if cached:
-                    outlet_state = {ok: cached}
-                    logger.info("[%s] Using cached outlet block for %s",
+            cached = session.outlet_state.get(ok)
+            if cached:
+                outlet_state = {ok: cached}
+            else:
+                try:
+                    data = await session.request_config(["outlet", ok], timeout=3.0)
+                    if isinstance(data, dict):
+                        block = data.get(ok, data)
+                        if isinstance(block, dict) and block:
+                            outlet_state = {ok: block}
+                except asyncio.TimeoutError:
+                    logger.info("[%s] getConfigField timeout for %s — no cached block either",
                                 session.device_id, ok)
+                except Exception as e:
+                    logger.warning("[%s] getConfigField error for %s: %s",
+                                   session.device_id, ok, e)
 
         payload = translate_command(field, value, session.mac, session.uid, outlet_num,
                                     device_state=session.device_state, subfield=subfield,
@@ -265,9 +322,11 @@ class MITMProxy:
                 if dev is None:
                     logger.warning("Unbekanntes Gerät client_id=%s — Session als unknown", client_id)
                     sid = f"unknown_{client_id.replace(':', '')}"
-                    s = ProxySession(sid, client_id, "", self.mqtt_client)
+                    s = ProxySession(sid, client_id, "", self.mqtt_client,
+                                     cache_dir=self._cache_dir)
                 else:
-                    s = ProxySession(dev["id"], dev["mac"], dev.get("uid", ""), self.mqtt_client)
+                    s = ProxySession(dev["id"], dev["mac"], dev.get("uid", ""),
+                                     self.mqtt_client, cache_dir=self._cache_dir)
                 s.set_upstream(upstream_writer)
                 s.set_client(client_writer)
                 self._sessions[s.device_id] = s
@@ -370,10 +429,15 @@ class MITMProxy:
                                         # for when active getConfigField times out
                                         sess = nonlocal_session[0]
                                         if sess is not None:
+                                            changed = False
                                             for k, v in params.items():
                                                 if (k.startswith("O") and k[1:].isdigit()
                                                         and isinstance(v, dict)):
-                                                    sess.outlet_state[k] = v
+                                                    if sess.outlet_state.get(k) != v:
+                                                        sess.outlet_state[k] = v
+                                                        changed = True
+                                            if changed:
+                                                sess._save_outlet_cache()
                         except Exception as e:
                             # Never let logging break the relay
                             logger.debug("relay_down parse error (non-fatal): %s", e)
@@ -473,6 +537,24 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
         if sid and sid != "avg" and sid not in seen:
             seen.add(sid)
             _publish_soil_sensor_discovery(mqtt_client, session.device_id, sid, device_cfg)
+
+    # Prune outlet discovery once per session: static discovery publishes
+    # 1..10 unconditionally; remove the ones the actual hardware does not
+    # have so HA stops showing ghost switches.
+    if not session._outlet_discovery_pruned:
+        outlet_block = d.get("outlet", {})
+        if isinstance(outlet_block, dict) and outlet_block:
+            present = {
+                int(k[1:]) for k in outlet_block.keys()
+                if isinstance(k, str) and k.startswith("O") and k[1:].isdigit()
+            }
+            if present:
+                for n in range(1, 11):
+                    if n not in present:
+                        _unpublish_outlet_discovery(mqtt_client, session.device_id, n)
+                logger.info("[%s] Outlet discovery pruned to %s",
+                            session.device_id, sorted(present))
+                session._outlet_discovery_pruned = True
 
     normalized = normalize_status(session.device_id, data)
     for norm_topic, value in normalized.items():

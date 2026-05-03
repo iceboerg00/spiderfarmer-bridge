@@ -165,6 +165,17 @@ def publish_discovery_for_device(
         logger.debug("Discovery published: %s", topic)
 
 
+def unpublish_outlet_discovery(
+    client: mqtt.Client, device_id: str, outlet_num: int
+) -> None:
+    """Remove an outlet entity from HA by publishing an empty retained payload
+    to its discovery topic. Used by the proxy when it learns the controller
+    has fewer outlets than the static discovery published (e.g. PS5 has 5,
+    static publishes 10)."""
+    uid = f"spiderfarmer_{device_id}_outlet_{outlet_num}"
+    client.publish(f"homeassistant/switch/{uid}/config", "", retain=True)
+
+
 def publish_soil_sensor_discovery(
     client: mqtt.Client, device_id: str, sensor_id: str, device_cfg: dict
 ) -> None:
