@@ -10,6 +10,7 @@ import '../settings/light-ppfd';
 import '../settings/fan-schedule';
 import '../settings/fan-cycle';
 import '../settings/fan-environment';
+import '../settings/fan-manual';
 
 @customElement('ggs-settings-panel')
 export class SettingsPanel extends LitElement {
@@ -40,6 +41,13 @@ export class SettingsPanel extends LitElement {
 
   override render() {
     if (this.mode === 'Manual') {
+      // Light has no settings in Manual mode. Fan still exposes the
+      // hardware-level controls (oscillation + natural_wind) that don't
+      // belong to a specific mode.
+      if (this.deviceType === 'fan') {
+        return html`<ggs-fan-manual-settings
+          .hass=${this.hass} .extras=${this.extras}></ggs-fan-manual-settings>`;
+      }
       return html`<div class="placeholder">No mode-specific settings.</div>`;
     }
 

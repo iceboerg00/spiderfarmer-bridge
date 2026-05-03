@@ -77,7 +77,7 @@ describe('<ggs-settings-panel>', () => {
     }
   });
 
-  it('renders the "no mode-specific settings" placeholder for Manual', async () => {
+  it('renders the "no mode-specific settings" placeholder for light + Manual', async () => {
     const el = await makeEl({
       hass: fakeHass,
       deviceType: 'light',
@@ -86,6 +86,16 @@ describe('<ggs-settings-panel>', () => {
     });
     const text = el.shadowRoot!.textContent ?? '';
     expect(text).toContain('No mode-specific settings');
+  });
+
+  it('renders <ggs-fan-manual-settings> for fan + Manual', async () => {
+    const el = await makeEl({
+      hass: fakeHass,
+      deviceType: 'fan',
+      mode: 'Manual',
+      extras: {},
+    });
+    expect(el.shadowRoot!.querySelector('ggs-fan-manual-settings')).toBeTruthy();
   });
 
   it('renders an "Unknown mode" placeholder for unrecognized labels', async () => {
