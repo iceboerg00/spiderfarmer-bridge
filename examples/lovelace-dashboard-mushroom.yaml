@@ -87,7 +87,8 @@ views:
           # Schedule Mode — only visible when light effect is "Schedule"
           - type: conditional
             conditions:
-              - entity: light.ggs_light_1
+              - condition: state
+                entity: light.ggs_light_1
                 attribute: effect
                 state: Schedule
             card:
@@ -107,7 +108,8 @@ views:
           # PPFD Mode — only visible when light effect is "PPFD"
           - type: conditional
             conditions:
-              - entity: light.ggs_light_1
+              - condition: state
+                entity: light.ggs_light_1
                 attribute: effect
                 state: PPFD
             card:
@@ -221,7 +223,8 @@ views:
           # Schedule Mode
           - type: conditional
             conditions:
-              - entity: fan.ggs_fan_circulation
+              - condition: state
+                entity: fan.ggs_fan_circulation
                 attribute: preset_mode
                 state: Schedule
             card:
@@ -245,7 +248,8 @@ views:
           # Cycle Mode
           - type: conditional
             conditions:
-              - entity: fan.ggs_fan_circulation
+              - condition: state
+                entity: fan.ggs_fan_circulation
                 attribute: preset_mode
                 state: Cycle
             card:
@@ -274,7 +278,8 @@ views:
           # select inside the card lets the user pick the specific variant.
           - type: conditional
             conditions:
-              - entity: fan.ggs_fan_circulation
+              - condition: state
+                entity: fan.ggs_fan_circulation
                 attribute: preset_mode
                 state:
                   - "Environment: Prioritize temperature"
@@ -373,7 +378,8 @@ views:
           # Schedule Mode
           - type: conditional
             conditions:
-              - entity: fan.ggs_fan_exhaust
+              - condition: state
+                entity: fan.ggs_fan_exhaust
                 attribute: preset_mode
                 state: Schedule
             card:
@@ -393,7 +399,8 @@ views:
           # Cycle Mode
           - type: conditional
             conditions:
-              - entity: fan.ggs_fan_exhaust
+              - condition: state
+                entity: fan.ggs_fan_exhaust
                 attribute: preset_mode
                 state: Cycle
             card:
@@ -417,7 +424,8 @@ views:
           # Environment Mode
           - type: conditional
             conditions:
-              - entity: fan.ggs_fan_exhaust
+              - condition: state
+                entity: fan.ggs_fan_exhaust
                 attribute: preset_mode
                 state:
                   - "Environment: Prioritize temperature"
