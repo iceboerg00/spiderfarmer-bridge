@@ -164,35 +164,39 @@ class MITMProxy:
             except Exception as e:
                 logger.error("Fehler beim Speichern von config.yaml: %s", e)
 
+    async def poll_session_config(self, sess: ProxySession) -> None:
+        """One round of getConfigField for all 4 modules on one session."""
+        for keypath in (["device", "light"], ["device", "light2"],
+                        ["device", "fan"], ["device", "blower"]):
+            try:
+                await sess.inject({
+                    "method": "getConfigField",
+                    "pid": sess.mac,
+                    "params": {"keyPath": keypath},
+                    "msgId": str(int(time.time() * 1000)),
+                    "uid": sess.uid,
+                })
+            except Exception as e:
+                logger.debug("config poll inject failed for %s: %s", keypath, e)
+            await asyncio.sleep(0.5)
+
     async def config_poll_loop(self) -> None:
-        """Periodically inject getConfigField requests into every active
-        controller session so HA caches stay fresh even when the user only
-        touches the SF App. Interval is configurable via
-        proxy.config_poll_interval_sec (default 600 = 10 minutes; 0 disables)."""
+        """Periodic ticker. Sessions also get an immediate one-shot poll on
+        connect (handle_client) so HA caches refresh straight after
+        restart/reconnect instead of waiting for the first interval tick.
+
+        Interval is configurable via proxy.config_poll_interval_sec
+        (default 600 = 10 minutes; 0 disables)."""
         interval = int(self.config.get("proxy", {}).get("config_poll_interval_sec", 600))
         if interval <= 0:
             logger.info("Config poll disabled (interval=%s)", interval)
             return
         logger.info("Config poll loop started, interval=%ds", interval)
-        await asyncio.sleep(min(60, interval))
         while True:
             try:
-                for sess in list(self._sessions.values()):
-                    for keypath in (["device", "light"], ["device", "light2"],
-                                    ["device", "fan"], ["device", "blower"]):
-                        try:
-                            await sess.inject({
-                                "method": "getConfigField",
-                                "pid": sess.mac,
-                                "params": {"keyPath": keypath},
-                                "msgId": str(int(time.time() * 1000)),
-                                "uid": sess.uid,
-                            })
-                        except Exception as e:
-                            logger.debug("config poll inject failed for %s: %s",
-                                         keypath, e)
-                        await asyncio.sleep(0.5)
                 await asyncio.sleep(interval)
+                for sess in list(self._sessions.values()):
+                    await self.poll_session_config(sess)
             except asyncio.CancelledError:
                 logger.info("Config poll loop stopped")
                 break
@@ -279,6 +283,12 @@ class MITMProxy:
                 self._sessions[s.device_id] = s
                 s.publish_availability("online")
                 logger.info("Session erstellt: device_id=%s mac=%s", s.device_id, s.mac)
+                # Immediate one-shot config poll so HA caches refresh on
+                # restart/reconnect rather than waiting for the next tick.
+                async def _initial_poll():
+                    await asyncio.sleep(3)
+                    await self.poll_session_config(s)
+                asyncio.create_task(_initial_poll())
                 return s
 
             async def relay_up():

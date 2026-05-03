@@ -163,13 +163,30 @@ class MITMProxy:
         except Exception as e:
             logger.error("Fehler beim Speichern von config.yaml: %s", e)
 
+    async def poll_session_config(self, sess: ProxySession) -> None:
+        """Inject one round of getConfigField for light/light2/fan/blower
+        into a single session. Called on session connect (immediate poll)
+        and periodically by config_poll_loop."""
+        for keypath in (["device", "light"], ["device", "light2"],
+                        ["device", "fan"], ["device", "blower"]):
+            try:
+                await sess.inject({
+                    "method": "getConfigField",
+                    "pid": sess.mac,
+                    "params": {"keyPath": keypath},
+                    "msgId": str(int(time.time() * 1000)),
+                    "uid": sess.uid,
+                })
+            except Exception as e:
+                logger.debug("config poll inject failed for %s: %s",
+                             keypath, e)
+            # Space out so we don't flood the controller in one burst
+            await asyncio.sleep(0.5)
+
     async def config_poll_loop(self) -> None:
-        """Periodically inject getConfigField requests for light/light2/fan/
-        blower into every active controller session. If the controller
-        honors them, the responses come back through relay_up, get parsed
-        by _process_publish, and refresh the light_state / fan_state caches
-        without any user interaction. If the controller ignores them
-        (firmware-dependent), this is harmless.
+        """Periodically poll every active controller session. Each session
+        also gets an immediate one-shot poll on connect (handle_client),
+        so this loop only owns the recurring tick.
 
         Interval is configurable via proxy.config_poll_interval_sec
         (default 600 = 10 minutes). Set to 0 to disable."""
@@ -178,28 +195,11 @@ class MITMProxy:
             logger.info("Config poll disabled (interval=%s)", interval)
             return
         logger.info("Config poll loop started, interval=%ds", interval)
-        # Initial delay so the first poll happens after sessions have had
-        # time to establish. Otherwise we'd inject into nothing.
-        await asyncio.sleep(min(60, interval))
         while True:
             try:
-                for sess in list(self._sessions.values()):
-                    for keypath in (["device", "light"], ["device", "light2"],
-                                    ["device", "fan"], ["device", "blower"]):
-                        try:
-                            await sess.inject({
-                                "method": "getConfigField",
-                                "pid": sess.mac,
-                                "params": {"keyPath": keypath},
-                                "msgId": str(int(time.time() * 1000)),
-                                "uid": sess.uid,
-                            })
-                        except Exception as e:
-                            logger.debug("config poll inject failed for %s: %s",
-                                         keypath, e)
-                        # Space out so we don't flood the controller in one burst
-                        await asyncio.sleep(0.5)
                 await asyncio.sleep(interval)
+                for sess in list(self._sessions.values()):
+                    await self.poll_session_config(sess)
             except asyncio.CancelledError:
                 logger.info("Config poll loop stopped")
                 break
@@ -293,6 +293,15 @@ class MITMProxy:
                 self._sessions[s.device_id] = s
                 s.publish_availability("online")
                 logger.info("Session erstellt: device_id=%s mac=%s", s.device_id, s.mac)
+                # Immediate one-shot config poll so HA caches refresh on
+                # restart/reconnect rather than waiting for the next 10-min
+                # tick. Detached so the connect path doesn't block on it.
+                async def _initial_poll():
+                    # Small delay so the controller has finished its CONNECT
+                    # handshake before we start firing extra requests at it.
+                    await asyncio.sleep(3)
+                    await self.poll_session_config(s)
+                asyncio.create_task(_initial_poll())
                 return s
 
             async def relay_up():
