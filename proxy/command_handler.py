@@ -21,6 +21,17 @@ _FAN_MODE_TO_TYPE = {
     "Environment: Temperature & humidity": 13,
 }
 
+# Submode-only labels for the Environment Mode sub-device dropdown. Same
+# modeType space as preset_mode, just without the "Environment: " prefix
+# (the card name already implies it).
+_FAN_ENV_SUBMODE_TO_TYPE = {
+    "Prioritize temperature": 7,
+    "Prioritize humidity": 8,
+    "Temperature only": 3,
+    "Humidity only": 4,
+    "Temperature & humidity": 13,
+}
+
 
 def _onoff(v) -> int:
     return 1 if str(v).upper() in ("ON", "1", "TRUE") else 0
@@ -221,7 +232,8 @@ def translate_command(
     # intact. When the cache is empty, synthesize a sensible default block
     # so the controller does not silently reject the partial command.
     _FAN_SUBFIELDS = {
-        "preset_mode", "schedule_start", "schedule_end",
+        "preset_mode", "env_submode",
+        "schedule_start", "schedule_end",
         "schedule_speed", "standby_speed",
         "cycle_start", "cycle_run_minutes", "cycle_off_minutes", "cycle_times",
         "oscillation_level", "natural_wind",
@@ -252,6 +264,12 @@ def translate_command(
             mt = _FAN_MODE_TO_TYPE.get(value)
             if mt is None:
                 logger.warning("Unknown fan preset_mode: %s", value)
+                return None
+            block["modeType"] = mt
+        elif subfield == "env_submode":
+            mt = _FAN_ENV_SUBMODE_TO_TYPE.get(value)
+            if mt is None:
+                logger.warning("Unknown fan env_submode: %s", value)
                 return None
             block["modeType"] = mt
         elif subfield == "schedule_start":

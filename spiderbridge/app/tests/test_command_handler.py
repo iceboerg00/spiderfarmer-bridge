@@ -264,6 +264,23 @@ def test_fan_preset_mode_unknown_label_returns_none():
     assert r is None
 
 
+def test_fan_env_submode_maps_label_to_modeType():
+    for label, expected_mt in [("Prioritize temperature", 7),
+                               ("Prioritize humidity", 8),
+                               ("Temperature only", 3),
+                               ("Humidity only", 4),
+                               ("Temperature & humidity", 13)]:
+        r = translate_command("fan", label, "AABBCC", "uid1",
+                              subfield="env_submode", fan_state={})
+        assert r["params"]["fan"]["modeType"] == expected_mt
+
+
+def test_fan_env_submode_unknown_returns_none():
+    r = translate_command("fan", "Bogus", "AABBCC", "uid1",
+                          subfield="env_submode", fan_state={})
+    assert r is None
+
+
 def test_fan_schedule_start_parses_hhmm():
     r = translate_command("fan", "07:30", "AABBCC", "uid1",
                           subfield="schedule_start", fan_state={})

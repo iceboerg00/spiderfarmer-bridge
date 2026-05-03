@@ -224,3 +224,22 @@ def test_blower_also_gets_extras():
     r = normalize_status("ggs_1", data)
     assert r["spiderfarmer/ggs_1/state/blower/mode_label"] == "Schedule"
     assert r["spiderfarmer/ggs_1/state/blower/schedule_speed"] == "50"
+
+
+def test_fan_env_submode_maps_only_env_modetypes():
+    # Env-mode select dropdown sources from a separate state topic that
+    # carries the env-only label (no "Environment: " prefix). Non-env
+    # modeTypes publish "" so HA shows the dropdown as unknown.
+    for mt, expected in [(7, "Prioritize temperature"),
+                         (8, "Prioritize humidity"),
+                         (3, "Temperature only"),
+                         (4, "Humidity only"),
+                         (13, "Temperature & humidity")]:
+        r = normalize_status("ggs_1", {"data": {"fan": {"modeType": mt}}})
+        assert r["spiderfarmer/ggs_1/state/fan/env_submode"] == expected
+
+
+def test_fan_env_submode_empty_when_not_in_env_mode():
+    for mt in (0, 1, 2):
+        r = normalize_status("ggs_1", {"data": {"fan": {"modeType": mt}}})
+        assert r["spiderfarmer/ggs_1/state/fan/env_submode"] == ""

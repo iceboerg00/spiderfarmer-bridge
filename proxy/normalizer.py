@@ -28,6 +28,19 @@ _FAN_MODES = {
     13: "Environment: Temperature & humidity",
 }
 
+# Subset for the Environment Mode sub-device dropdown — the SF App's
+# Umweltmodus tab only lets you switch between the 5 env variants, so the
+# state topic for that select entity drops the "Environment: " prefix
+# (which is already implied by the card name) and stays empty when the fan
+# is in Manual/Schedule/Cycle.
+_FAN_ENV_LABELS = {
+    3: "Temperature only",
+    4: "Humidity only",
+    7: "Prioritize temperature",
+    8: "Prioritize humidity",
+    13: "Temperature & humidity",
+}
+
 
 def _on_off(val) -> str:
     return "ON" if val in (1, True, "1", "true", "on") else "OFF"
@@ -103,6 +116,9 @@ def fan_extras_topics(device_id: str, prefix: str, block: Dict[str, Any]) -> Dic
     if "modeType" in block:
         mt = block["modeType"]
         out[f"{base}/mode_label"] = _FAN_MODES.get(mt, str(mt))
+        # Empty string when not in env mode → HA select entity goes to
+        # "unknown" rather than displaying a non-option like "Manual".
+        out[f"{base}/env_submode"] = _FAN_ENV_LABELS.get(mt, "")
     if "maxSpeed" in block:
         out[f"{base}/schedule_speed"] = str(block["maxSpeed"])
     if "minSpeed" in block:
