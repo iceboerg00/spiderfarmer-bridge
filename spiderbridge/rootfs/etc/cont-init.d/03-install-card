@@ -1,0 +1,44 @@
+#!/bin/sh
+# Copy the GGS Lovelace card into HA's /config/www/ and register it as a
+# Lovelace resource via the Supervisor proxy so users get a zero-click
+# install with the addon.
+set -e
+
+CARD_SRC="/usr/share/spiderbridge/www/ggs-card.js"
+CARD_DEST="/config/www/ggs-card.js"
+
+if [ ! -f "$CARD_SRC" ]; then
+  echo "[install-card] $CARD_SRC missing — skipping."
+  exit 0
+fi
+
+mkdir -p /config/www
+cp -f "$CARD_SRC" "$CARD_DEST"
+echo "[install-card] copied to $CARD_DEST"
+
+# Register / update the Lovelace resource.
+# /api/lovelace/resources is only available when the Lovelace storage mode
+# is the default ("ui"). YAML-mode dashboards manage resources in YAML, so
+# the API call returns 404 / 405 and we just log + skip.
+RESOURCE_URL="/local/ggs-card.js"
+API="http://supervisor/core/api"
+AUTH="Authorization: Bearer ${SUPERVISOR_TOKEN}"
+
+existing=$(curl -fsS -H "$AUTH" "$API/lovelace/resources" 2>/dev/null || true)
+
+if [ -z "$existing" ]; then
+  echo "[install-card] Lovelace resources API unreachable (YAML mode? supervisor-only setup?) — skipping resource registration."
+  exit 0
+fi
+
+resource_id=$(echo "$existing" | jq -r --arg u "$RESOURCE_URL" '.[] | select(.url == $u) | .id' 2>/dev/null || true)
+
+if [ -n "$resource_id" ]; then
+  echo "[install-card] resource already registered (id=$resource_id)"
+else
+  curl -fsS -X POST -H "$AUTH" -H "Content-Type: application/json" \
+    -d "{\"url\":\"$RESOURCE_URL\",\"res_type\":\"module\"}" \
+    "$API/lovelace/resources" >/dev/null \
+    && echo "[install-card] registered Lovelace resource $RESOURCE_URL" \
+    || echo "[install-card] resource registration failed — add it manually under Settings → Dashboards → Resources"
+fi

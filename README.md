@@ -134,6 +134,20 @@ Soil sensors are auto-discovered with their hardware ID on first connect.
 
 ---
 
+## Lovelace Card (optional but pretty)
+
+A custom Home Assistant card mirrors the SF App's per-device control with mode-dependent settings — tabs for Light 1, Fan Circulation and Fan Exhaust, mode dropdown, settings panel that swaps with the selected mode.
+
+- **HA Addon users:** the card auto-installs with the addon, no extra step.
+- **Manual / HACS users:** add this repo as a HACS Frontend custom repository, install the card, register `/local/ggs-card.js` as a Lovelace resource.
+- Full instructions: [`spiderbridge/frontend/README.md`](spiderbridge/frontend/README.md).
+
+```yaml
+type: custom:ggs-card
+```
+
+---
+
 ## First Connection (both options)
 
 After starting, connect the GGS Controller to the configured Wi-Fi SSID. The MAC address is auto-detected on first connect:

@@ -21,6 +21,6 @@ TODO.md
 
 .superpowers/
 
-frontend/node_modules/
-frontend/dist/
-frontend/coverage/
+spiderbridge/frontend/node_modules/
+spiderbridge/frontend/dist/
+spiderbridge/frontend/coverage/
