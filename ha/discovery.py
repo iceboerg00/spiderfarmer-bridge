@@ -373,6 +373,11 @@ def _fan_extras(device_id: str, module: str, friendly: str, cfg: dict,
                    "Start Time", HHMM, cfg, device=sched_dev),
         _text_path(device_id, module, "schedule_end",
                    "End Time", HHMM, cfg, device=sched_dev),
+        # Standby Speed applies in every mode (minSpeed when conditions
+        # are at target / the fan is idle), so alias it under each card.
+        _number_path_aliased(device_id, module, "standby_speed", "schedule",
+                             "Standby Speed", 0, speed_max, 1, cfg,
+                             device=sched_dev),
     ]
     if natural_wind:
         out.append(
@@ -389,6 +394,9 @@ def _fan_extras(device_id: str, module: str, friendly: str, cfg: dict,
                      "Off Time", 0, 1440, 1, cfg, unit="min", device=cycle_dev),
         _number_path(device_id, module, "cycle_times",
                      "Cycles", 1, 100, 1, cfg, device=cycle_dev),
+        _number_path_aliased(device_id, module, "standby_speed", "cycle",
+                             "Standby Speed", 0, speed_max, 1, cfg,
+                             device=cycle_dev),
     ]
     if natural_wind:
         out.append(
