@@ -21,6 +21,17 @@ _FAN_MODE_TO_TYPE = {
     "Environment: Temperature & humidity": 13,
 }
 
+# Submode-only labels for the Environment Mode sub-device dropdown. Same
+# modeType space as preset_mode, just without the "Environment: " prefix
+# (the card name already implies it).
+_FAN_ENV_SUBMODE_TO_TYPE = {
+    "Prioritize temperature": 7,
+    "Prioritize humidity": 8,
+    "Temperature only": 3,
+    "Humidity only": 4,
+    "Temperature & humidity": 13,
+}
+
 
 def _onoff(v) -> int:
     return 1 if str(v).upper() in ("ON", "1", "TRUE") else 0
@@ -221,7 +232,8 @@ def translate_command(
     # intact. When the cache is empty, synthesize a sensible default block
     # so the controller does not silently reject the partial command.
     _FAN_SUBFIELDS = {
-        "preset_mode", "schedule_start", "schedule_end",
+        "preset_mode", "env_submode",
+        "schedule_start", "schedule_end",
         "schedule_speed", "standby_speed",
         "cycle_start", "cycle_run_minutes", "cycle_off_minutes", "cycle_times",
         "oscillation_level", "natural_wind",
@@ -254,6 +266,12 @@ def translate_command(
                 logger.warning("Unknown fan preset_mode: %s", value)
                 return None
             block["modeType"] = mt
+        elif subfield == "env_submode":
+            mt = _FAN_ENV_SUBMODE_TO_TYPE.get(value)
+            if mt is None:
+                logger.warning("Unknown fan env_submode: %s", value)
+                return None
+            block["modeType"] = mt
         elif subfield == "schedule_start":
             tp = block.setdefault("timePeriod", [{}])
             if not tp:
@@ -269,15 +287,19 @@ def translate_command(
             # depending on mode: mLevel in Manual, maxSpeed in
             # Schedule/Cycle/Environment. Write both so a single HA "Speed"
             # entity actually changes the fan regardless of current mode.
+            # Range is 1-10 for Fan Circulation, 1-100 for Fan Exhaust
+            # (blower) — the discovery payload sets the same bounds in HA.
+            speed_max = 100 if field == "blower" else 10
             try:
-                v = max(1, min(10, int(float(value))))
+                v = max(1, min(speed_max, int(float(value))))
             except (ValueError, TypeError):
                 return None
             block["maxSpeed"] = v
             block["mLevel"] = v
         elif subfield == "standby_speed":
+            speed_max = 100 if field == "blower" else 10
             try:
-                block["minSpeed"] = max(0, min(10, int(float(value))))
+                block["minSpeed"] = max(0, min(speed_max, int(float(value))))
             except (ValueError, TypeError):
                 return None
         elif subfield == "cycle_start":

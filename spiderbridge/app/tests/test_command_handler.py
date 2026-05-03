@@ -264,6 +264,23 @@ def test_fan_preset_mode_unknown_label_returns_none():
     assert r is None
 
 
+def test_fan_env_submode_maps_label_to_modeType():
+    for label, expected_mt in [("Prioritize temperature", 7),
+                               ("Prioritize humidity", 8),
+                               ("Temperature only", 3),
+                               ("Humidity only", 4),
+                               ("Temperature & humidity", 13)]:
+        r = translate_command("fan", label, "AABBCC", "uid1",
+                              subfield="env_submode", fan_state={})
+        assert r["params"]["fan"]["modeType"] == expected_mt
+
+
+def test_fan_env_submode_unknown_returns_none():
+    r = translate_command("fan", "Bogus", "AABBCC", "uid1",
+                          subfield="env_submode", fan_state={})
+    assert r is None
+
+
 def test_fan_schedule_start_parses_hhmm():
     r = translate_command("fan", "07:30", "AABBCC", "uid1",
                           subfield="schedule_start", fan_state={})
@@ -325,6 +342,23 @@ def test_fan_subfield_targets_blower_keypath_when_field_is_blower():
     assert r["params"]["keyPath"] == ["device", "blower"]
     assert "blower" in r["params"]
     assert r["params"]["blower"]["maxSpeed"] == 5
+
+
+def test_blower_schedule_speed_clamped_to_100_not_10():
+    # Fan clamps to 10, blower clamps to 100 — same subfield, different
+    # range. HA's discovery declares the matching bounds for each.
+    fan = translate_command("fan", "150", "AABBCC", "uid1",
+                            subfield="schedule_speed", fan_state={})
+    blower = translate_command("blower", "150", "AABBCC", "uid1",
+                               subfield="schedule_speed", fan_state={})
+    assert fan["params"]["fan"]["maxSpeed"] == 10
+    assert blower["params"]["blower"]["maxSpeed"] == 100
+
+
+def test_blower_standby_speed_clamped_to_100():
+    r = translate_command("blower", "200", "AABBCC", "uid1",
+                          subfield="standby_speed", fan_state={})
+    assert r["params"]["blower"]["minSpeed"] == 100
 
 
 # ── Light app-parity (subfield writes) ─────────────────────────────────────

@@ -117,6 +117,46 @@ def _switch_path(device_id: str, path: str, suffix: str, name: str, cfg: dict,
     return f"homeassistant/switch/{uid}/config", payload
 
 
+def _switch_path_aliased(device_id: str, path: str, suffix: str, alias: str,
+                         name: str, cfg: dict,
+                         device: dict | None = None) -> Tuple[str, dict]:
+    """Switch counterpart of _number_path_aliased — same wire topics,
+    distinct unique_id, so one controller field can appear under multiple
+    sub-devices (e.g. natural_wind under Schedule + Cycle + Environment)."""
+    uid = f"spiderfarmer_{device_id}_{path}_{suffix}_{alias}"
+    payload = {
+        "name": name,
+        "unique_id": uid,
+        "state_topic": f"spiderfarmer/{device_id}/state/{path}/{suffix}",
+        "command_topic": f"spiderfarmer/{device_id}/command/{path}/{suffix}/set",
+        "availability_topic": f"spiderfarmer/{device_id}/availability",
+        "payload_on": "ON",
+        "payload_off": "OFF",
+        "device": device or _device_info(device_id, cfg),
+    }
+    return f"homeassistant/switch/{uid}/config", payload
+
+
+def _select_path(device_id: str, path: str, suffix: str, name: str,
+                 options: list, cfg: dict,
+                 device: dict | None = None) -> Tuple[str, dict]:
+    """HA select entity. Reads label from state topic, writes label to
+    command topic; the command_handler maps the label back to the
+    underlying controller field."""
+    uid = f"spiderfarmer_{device_id}_{path}_{suffix}"
+    payload = {
+        "name": name,
+        "unique_id": uid,
+        "state_topic": f"spiderfarmer/{device_id}/state/{path}/{suffix}",
+        "command_topic": f"spiderfarmer/{device_id}/command/{path}/{suffix}/set",
+        "availability_topic": f"spiderfarmer/{device_id}/availability",
+        "options": list(options),
+        "entity_category": "config",
+        "device": device or _device_info(device_id, cfg),
+    }
+    return f"homeassistant/select/{uid}/config", payload
+
+
 def _number_path_aliased(device_id: str, path: str, suffix: str, alias: str,
                          name: str, min_val, max_val, step, cfg: dict,
                          unit: str | None = None,
@@ -188,6 +228,18 @@ _FAN_PRESET_MODES = [
 ]
 
 
+# Subset of preset modes for the Environment Mode sub-device dropdown —
+# matches the SF App's "Umweltmodus → Betriebsmodus" tab where you pick
+# between the 5 environment variants in one place.
+_FAN_ENV_SUBMODES = [
+    "Prioritize temperature",
+    "Prioritize humidity",
+    "Temperature only",
+    "Humidity only",
+    "Temperature & humidity",
+]
+
+
 def _fan(device_id: str, module: str, name: str, speed_max: int, cfg: dict,
          oscillation: bool = False, preset_modes: bool = False) -> Tuple[str, dict]:
     uid = f"spiderfarmer_{device_id}_{module}"
@@ -239,11 +291,14 @@ def _light_extras(device_id: str, module: str, friendly: str, cfg: dict) -> list
         separate settings card).
     Note: dim_threshold/off_threshold appear under each sub-device with
     distinct unique_ids but identical state/command topics, so HA shows
-    them in both cards while a single change keeps them synchronized."""
+    them in both cards while a single change keeps them synchronized.
+    Sub-device names are prefixed with the controller's friendly_name
+    so HA generates entity_ids that match the main device's prefix."""
     parent_id = f"spiderfarmer_{device_id}"
-    sched_dev = _settings_subdevice(parent_id, friendly, f"{module}_schedule",
+    full_name = f"{cfg.get('friendly_name', 'GGS')} {friendly}"
+    sched_dev = _settings_subdevice(parent_id, full_name, f"{module}_schedule",
                                     "Schedule Mode", "Schedule settings")
-    ppfd_dev = _settings_subdevice(parent_id, friendly, f"{module}_ppfd",
+    ppfd_dev = _settings_subdevice(parent_id, full_name, f"{module}_ppfd",
                                    "PPFD Mode", "PPFD settings")
     HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
     return [
@@ -287,27 +342,64 @@ def _light_extras(device_id: str, module: str, friendly: str, cfg: dict) -> list
     ]
 
 
-def _fan_extras(device_id: str, module: str, friendly: str, cfg: dict) -> list:
+def _fan_extras(device_id: str, module: str, friendly: str, cfg: dict,
+                speed_max: int = 10, oscillation: bool = True,
+                natural_wind: bool = True) -> list:
     """Sub-device entities mirroring the SF App's Lüfter-Einstellungen screen
     for one fan/blower. Three sub-devices linked via via_device:
-      - Zeitfenstermodus: schedule_start, schedule_end
-      - Zyklusmodus: cycle_start, cycle_run, cycle_off, cycle_times
-      - Geschwindigkeiten: schedule_speed, standby_speed, oscillation_level
-    Plus a switch on the main device for natural_wind."""
+      - Schedule Mode: schedule_start, schedule_end + Speed, Standby Speed
+        [+ Oscillation] [+ Natural Wind]
+      - Cycle Mode: cycle_start, cycle_run, cycle_off, cycle_times +
+        Speed, Standby Speed [+ Oscillation] [+ Natural Wind]
+      - Environment Mode: submode dropdown (5 env variants) + Speed,
+        Standby Speed [+ Oscillation] [+ Natural Wind]
+    Speed / Standby Speed / Oscillation / Natural Wind apply across every
+    mode, so they are aliased under each card with distinct unique_ids
+    but shared wire topics — toggling any copy keeps the others in sync.
+    `speed_max` parameterizes the speed range (10 for Fan Circulation,
+    100 for Fan Exhaust/blower). `oscillation=False` skips Oscillation
+    (blower has no shaking head). `natural_wind=False` skips Natural Wind
+    (blower has no natural-wind feature either)."""
     parent_id = f"spiderfarmer_{device_id}"
-    sched_dev = _settings_subdevice(parent_id, friendly, f"{module}_schedule",
+    full_name = f"{cfg.get('friendly_name', 'GGS')} {friendly}"
+    sched_dev = _settings_subdevice(parent_id, full_name, f"{module}_schedule",
                                     "Schedule Mode", "Schedule settings")
-    cycle_dev = _settings_subdevice(parent_id, friendly, f"{module}_cycle",
+    cycle_dev = _settings_subdevice(parent_id, full_name, f"{module}_cycle",
                                     "Cycle Mode", "Cycle settings")
-    speeds_dev = _settings_subdevice(parent_id, friendly, f"{module}_speeds",
-                                     "Speeds", "Speed settings")
+    env_dev = _settings_subdevice(parent_id, full_name, f"{module}_env",
+                                  "Environment Mode", "Environment settings")
     HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
+
+    def _shared_speed_settings(card_dev: dict, alias: str) -> list:
+        """Speed / Standby Speed / Oscillation / Natural Wind aliased under
+        each card. Distinct unique_ids per alias, shared wire topics."""
+        items = [
+            _number_path_aliased(device_id, module, "schedule_speed", alias,
+                                 "Speed", 1, speed_max, 1, cfg, device=card_dev),
+            _number_path_aliased(device_id, module, "standby_speed", alias,
+                                 "Standby Speed", 0, speed_max, 1, cfg,
+                                 device=card_dev),
+        ]
+        if oscillation:
+            items.append(
+                _number_path_aliased(device_id, module, "oscillation_level",
+                                     alias, "Oscillation", 0, 10, 1, cfg,
+                                     device=card_dev),
+            )
+        if natural_wind:
+            items.append(
+                _switch_path_aliased(device_id, module, "natural_wind", alias,
+                                     "Natural Wind", cfg, device=card_dev),
+            )
+        return items
+
     return [
         # Schedule Mode
         _text_path(device_id, module, "schedule_start",
                    "Start Time", HHMM, cfg, device=sched_dev),
         _text_path(device_id, module, "schedule_end",
                    "End Time", HHMM, cfg, device=sched_dev),
+        *_shared_speed_settings(sched_dev, "schedule"),
         # Cycle Mode
         _text_path(device_id, module, "cycle_start",
                    "Start Time", HHMM, cfg, device=cycle_dev),
@@ -317,15 +409,11 @@ def _fan_extras(device_id: str, module: str, friendly: str, cfg: dict) -> list:
                      "Off Time", 0, 1440, 1, cfg, unit="min", device=cycle_dev),
         _number_path(device_id, module, "cycle_times",
                      "Cycles", 1, 100, 1, cfg, device=cycle_dev),
-        # Speeds (catch-all fan settings — applies across all modes)
-        _number_path(device_id, module, "schedule_speed",
-                     "Speed", 1, 10, 1, cfg, device=speeds_dev),
-        _number_path(device_id, module, "standby_speed",
-                     "Standby Speed", 0, 10, 1, cfg, device=speeds_dev),
-        _number_path(device_id, module, "oscillation_level",
-                     "Oscillation", 0, 10, 1, cfg, device=speeds_dev),
-        _switch_path(device_id, module, "natural_wind",
-                     "Natural Wind", cfg, device=speeds_dev),
+        *_shared_speed_settings(cycle_dev, "cycle"),
+        # Environment Mode
+        _select_path(device_id, module, "env_submode",
+                     "Submode", _FAN_ENV_SUBMODES, cfg, device=env_dev),
+        *_shared_speed_settings(env_dev, "env"),
     ]
 
 
@@ -355,14 +443,20 @@ def publish_discovery_for_device(
     entities.append(_light(device_id, "light2", "Light 2", device_cfg))
 
     # ── Fans ──────────────────────────────────────────────────────────────────
-    entities.append(_fan(device_id, "blower", "Fan Exhaust", 100, device_cfg))
-    # Fan Circulation gets the new app-parity entities: preset_modes on the
-    # main fan plus three sub-devices (Schedule Mode, Cycle Mode, Speeds)
-    # and a switch for natural wind. Fan Exhaust (blower) is intentionally
-    # left as the simple variant for now — same pattern, follow-up.
+    # Fan Circulation: oscillating tent fan (speed 1-10, has shake head and
+    # natural-wind feature). Fan Exhaust/blower: extraction fan (speed
+    # 1-100, no oscillation, no natural-wind). Both get the same preset
+    # mode dropdown and the same four settings sub-devices, just with
+    # speed range and the irrelevant entities suppressed for the blower.
     entities.append(_fan(device_id, "fan", "Fan Circulation", 10, device_cfg,
                          preset_modes=True))
-    entities += _fan_extras(device_id, "fan", "Fan", device_cfg)
+    entities += _fan_extras(device_id, "fan", "Fan", device_cfg,
+                            speed_max=10)
+    entities.append(_fan(device_id, "blower", "Fan Exhaust", 100, device_cfg,
+                         preset_modes=True))
+    entities += _fan_extras(device_id, "blower", "Fan Exhaust", device_cfg,
+                            speed_max=100, oscillation=False,
+                            natural_wind=False)
 
     # ── Soil sensors (average) ────────────────────────────────────────────────
     entities += [
