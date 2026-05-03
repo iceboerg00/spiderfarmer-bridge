@@ -46,7 +46,7 @@ def test_publish_discovery_emits_lights_with_effect_list(mocker):
     assert light["schema"] == "json"
     assert light["brightness"] is True
     assert light["brightness_scale"] == 100
-    assert light["effect_list"] == ["Modus: Manual / Timer", "Modus: PPFD"]
+    assert light["effect_list"] == ["Manual", "Schedule", "PPFD"]
     assert light["command_topic"] == "spiderfarmer/ggs_1/command/light/set"
 
     assert "homeassistant/light/spiderfarmer_ggs_1_light2/config" in pubs
@@ -125,17 +125,33 @@ def test_publish_discovery_uses_retain_for_every_message(mocker):
 
 
 def test_publish_discovery_device_info_consistent(mocker):
+    # Main entities live on the GGS controller; Fan Circulation settings
+    # entities live on three sub-devices (Schedule Mode, Cycle Mode, Speeds)
+    # linked back via via_device. Light 1 adds two more sub-devices
+    # (Schedule Mode, PPFD Mode).
     client = mocker.MagicMock()
     publish_discovery_for_device(client, "ggs_1", CFG)
     pubs = _publish_calls(client)
 
     seen = {tuple(p["device"]["identifiers"]) for p in pubs.values()}
-    assert seen == {("spiderfarmer_ggs_1",)}
+    assert ("spiderfarmer_ggs_1",) in seen
+    sub_ids = {ids for ids in seen if ids != ("spiderfarmer_ggs_1",)}
+    assert sub_ids == {
+        ("spiderfarmer_ggs_1_fan_schedule",),
+        ("spiderfarmer_ggs_1_fan_cycle",),
+        ("spiderfarmer_ggs_1_fan_speeds",),
+        ("spiderfarmer_ggs_1_light_schedule",),
+        ("spiderfarmer_ggs_1_light_ppfd",),
+    }
 
     for p in pubs.values():
+        ids = tuple(p["device"]["identifiers"])
         assert p["device"]["manufacturer"] == "Spider Farmer"
-        assert p["device"]["model"] == "GGS Controller"
-        assert p["device"]["name"] == "Test GGS"
+        if ids == ("spiderfarmer_ggs_1",):
+            assert p["device"]["model"] == "GGS Controller"
+            assert p["device"]["name"] == "Test GGS"
+        else:
+            assert p["device"]["via_device"] == "spiderfarmer_ggs_1"
 
 
 def test_unpublish_outlet_discovery_sends_empty_retained_payload(mocker):
@@ -170,3 +186,144 @@ def test_publish_soil_sensor_discovery_emits_three_entities(mocker):
     assert ec_topic in pubs
     assert "device_class" not in pubs[ec_topic]
     assert pubs[ec_topic]["unit_of_measurement"] == "mS/cm"
+
+
+def test_publish_discovery_emits_fan_preset_modes(mocker):
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    pubs = _publish_calls(client)
+
+    fan = pubs["homeassistant/fan/spiderfarmer_ggs_1_fan/config"]
+    assert fan["preset_mode_state_topic"] == "spiderfarmer/ggs_1/state/fan/mode_label"
+    assert fan["preset_mode_command_topic"] == "spiderfarmer/ggs_1/command/fan/preset_mode/set"
+    assert "Manual" in fan["preset_modes"]
+    assert "Schedule" in fan["preset_modes"]
+    assert "Cycle" in fan["preset_modes"]
+    assert "Environment: Prioritize temperature" in fan["preset_modes"]
+    assert len(fan["preset_modes"]) == 8
+
+
+def test_publish_discovery_emits_fan_extras(mocker):
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    topics = {call.args[0] for call in client.publish.call_args_list}
+
+    # Schedule Mode sub-device
+    assert "homeassistant/text/spiderfarmer_ggs_1_fan_schedule_start/config" in topics
+    assert "homeassistant/text/spiderfarmer_ggs_1_fan_schedule_end/config" in topics
+    # Cycle Mode sub-device
+    assert "homeassistant/text/spiderfarmer_ggs_1_fan_cycle_start/config" in topics
+    assert "homeassistant/number/spiderfarmer_ggs_1_fan_cycle_run_minutes/config" in topics
+    assert "homeassistant/number/spiderfarmer_ggs_1_fan_cycle_off_minutes/config" in topics
+    assert "homeassistant/number/spiderfarmer_ggs_1_fan_cycle_times/config" in topics
+    # Speeds sub-device
+    assert "homeassistant/number/spiderfarmer_ggs_1_fan_schedule_speed/config" in topics
+    assert "homeassistant/number/spiderfarmer_ggs_1_fan_standby_speed/config" in topics
+    assert "homeassistant/number/spiderfarmer_ggs_1_fan_oscillation_level/config" in topics
+    # Natural wind on main device (switch)
+    assert "homeassistant/switch/spiderfarmer_ggs_1_fan_natural_wind/config" in topics
+
+
+def test_publish_discovery_emits_light_extras(mocker):
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    topics = {call.args[0] for call in client.publish.call_args_list}
+
+    # Schedule Mode sub-device
+    assert "homeassistant/number/spiderfarmer_ggs_1_light_schedule_brightness/config" in topics
+    assert "homeassistant/text/spiderfarmer_ggs_1_light_schedule_start/config" in topics
+    assert "homeassistant/text/spiderfarmer_ggs_1_light_schedule_end/config" in topics
+    assert "homeassistant/number/spiderfarmer_ggs_1_light_fade_minutes/config" in topics
+    # PPFD Mode sub-device
+    assert "homeassistant/number/spiderfarmer_ggs_1_light_ppfd_target/config" in topics
+    assert "homeassistant/number/spiderfarmer_ggs_1_light_ppfd_min/config" in topics
+    assert "homeassistant/number/spiderfarmer_ggs_1_light_ppfd_max/config" in topics
+    assert "homeassistant/text/spiderfarmer_ggs_1_light_ppfd_start/config" in topics
+    assert "homeassistant/text/spiderfarmer_ggs_1_light_ppfd_end/config" in topics
+    assert "homeassistant/number/spiderfarmer_ggs_1_light_ppfd_fade_minutes/config" in topics
+    # Temperaturschutz appears under BOTH sub-devices with distinct uids
+    assert "homeassistant/number/spiderfarmer_ggs_1_light_dim_threshold_schedule/config" in topics
+    assert "homeassistant/number/spiderfarmer_ggs_1_light_off_threshold_schedule/config" in topics
+    assert "homeassistant/number/spiderfarmer_ggs_1_light_dim_threshold_ppfd/config" in topics
+    assert "homeassistant/number/spiderfarmer_ggs_1_light_off_threshold_ppfd/config" in topics
+
+
+def test_light_extras_grouped_into_sub_devices(mocker):
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    pubs = _publish_calls(client)
+
+    # Schedule fields → Schedule Mode sub-device
+    sb = pubs["homeassistant/number/spiderfarmer_ggs_1_light_schedule_brightness/config"]
+    assert sb["device"]["identifiers"] == ["spiderfarmer_ggs_1_light_schedule"]
+    assert sb["device"]["via_device"] == "spiderfarmer_ggs_1"
+    assert sb["min"] == 0 and sb["max"] == 100
+    assert sb["unit_of_measurement"] == "%"
+
+    # PPFD fields → PPFD Mode sub-device
+    pt = pubs["homeassistant/number/spiderfarmer_ggs_1_light_ppfd_target/config"]
+    assert pt["device"]["identifiers"] == ["spiderfarmer_ggs_1_light_ppfd"]
+    assert pt["max"] == 1000
+    assert pt["unit_of_measurement"] == "µmol/m²/s"
+
+
+def test_light_temperaturschutz_appears_in_both_sub_devices_same_topics(mocker):
+    # Per user request, dim/off thresholds belong in both Schedule and PPFD
+    # cards (they apply in both modes). The two HA entities have distinct
+    # unique_ids but identical state/command topics so a single change
+    # keeps them in sync.
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    pubs = _publish_calls(client)
+
+    dim_sched = pubs["homeassistant/number/spiderfarmer_ggs_1_light_dim_threshold_schedule/config"]
+    dim_ppfd = pubs["homeassistant/number/spiderfarmer_ggs_1_light_dim_threshold_ppfd/config"]
+
+    assert dim_sched["device"]["identifiers"] == ["spiderfarmer_ggs_1_light_schedule"]
+    assert dim_ppfd["device"]["identifiers"] == ["spiderfarmer_ggs_1_light_ppfd"]
+    # Same wire topics so HA stays in sync
+    assert dim_sched["state_topic"] == dim_ppfd["state_topic"]
+    assert dim_sched["command_topic"] == dim_ppfd["command_topic"]
+    # Distinct unique_ids
+    assert dim_sched["unique_id"] != dim_ppfd["unique_id"]
+
+
+def test_light2_does_not_get_settings_sub_devices(mocker):
+    # Only Light 1 mirrors the SF App's settings screen. Light 2 stays as
+    # the simple light entity to keep the dashboard uncluttered.
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    topics = {call.args[0] for call in client.publish.call_args_list}
+
+    assert not any("light2_schedule" in t or "light2_ppfd" in t for t in topics)
+
+
+def test_fan_extras_grouped_into_sub_devices(mocker):
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    pubs = _publish_calls(client)
+
+    # Schedule fields → Schedule Mode sub-device
+    ss = pubs["homeassistant/text/spiderfarmer_ggs_1_fan_schedule_start/config"]
+    assert ss["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_schedule"]
+    assert ss["device"]["via_device"] == "spiderfarmer_ggs_1"
+
+    # Cycle fields → Cycle Mode sub-device
+    cr = pubs["homeassistant/number/spiderfarmer_ggs_1_fan_cycle_run_minutes/config"]
+    assert cr["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_cycle"]
+    assert cr["unit_of_measurement"] == "min"
+    assert cr["max"] == 1440
+
+    # Cycle times max 100 (controller cap)
+    ct = pubs["homeassistant/number/spiderfarmer_ggs_1_fan_cycle_times/config"]
+    assert ct["max"] == 100
+
+    # Speed fields → Speeds sub-device
+    sp = pubs["homeassistant/number/spiderfarmer_ggs_1_fan_schedule_speed/config"]
+    assert sp["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_speeds"]
+    assert sp["min"] == 1 and sp["max"] == 10
+
+    # Natural wind lives on the Speeds sub-device — same group as the
+    # other "applies across all modes" fan settings.
+    nw = pubs["homeassistant/switch/spiderfarmer_ggs_1_fan_natural_wind/config"]
+    assert nw["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_speeds"]

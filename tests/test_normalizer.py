@@ -30,20 +30,21 @@ def test_soil_avg_block_emits_top_level_topics():
     assert r["spiderfarmer/ggs_1/state/ec_soil"] == "1.5"
 
 
-def test_light_emits_json_payload_with_manual_mode():
+def test_light_emits_json_payload_with_schedule_mode():
     data = {"data": {"light": {"on": 1, "level": 80, "modeType": 1}}}
     r = normalize_status("ggs_1", data)
     p = json.loads(r["spiderfarmer/ggs_1/state/light"])
-    assert p == {"state": "ON", "brightness": 80, "effect": "Modus: Manual / Timer"}
+    assert p == {"state": "ON", "brightness": 80, "effect": "Schedule"}
 
 
-def test_light_mode_zero_also_displayed_as_manual():
-    # Controller reports modeType 0 (Manual) when the SF cloud or HA sets it
-    # to manual control. UI should still show a known effect, not the raw "0".
+def test_light_mode_zero_displays_as_manual():
+    # modeType 0 = "Manueller Modus" per SF App; modeType 1 is a different
+    # mode (Schedule / Zeitfenster). They must surface as distinct effects
+    # in HA so the dropdown reflects what the controller is actually doing.
     data = {"data": {"light": {"on": 1, "level": 80, "modeType": 0}}}
     r = normalize_status("ggs_1", data)
     p = json.loads(r["spiderfarmer/ggs_1/state/light"])
-    assert p["effect"] == "Modus: Manual / Timer"
+    assert p["effect"] == "Manual"
 
 
 def test_light_off_state():
@@ -57,7 +58,7 @@ def test_light2_ppfd_mode():
     data = {"data": {"light2": {"on": 1, "level": 50, "modeType": 12}}}
     r = normalize_status("ggs_1", data)
     p = json.loads(r["spiderfarmer/ggs_1/state/light2"])
-    assert p["effect"] == "Modus: PPFD"
+    assert p["effect"] == "PPFD"
 
 
 def test_light_controller_flat_schema_maps_to_light_topic():
@@ -69,7 +70,7 @@ def test_light_controller_flat_schema_maps_to_light_topic():
     p = json.loads(r["spiderfarmer/ggs_1/state/light"])
     assert p["state"] == "ON"
     assert p["brightness"] == 42
-    assert p["effect"] == "Modus: PPFD"
+    assert p["effect"] == "PPFD"
 
 
 def test_light_controller_flat_schema_off_when_brightness_zero():
@@ -93,7 +94,7 @@ def test_nested_light_takes_precedence_over_flat_lc_schema():
     r = normalize_status("ggs_1", data)
     p = json.loads(r["spiderfarmer/ggs_1/state/light"])
     assert p["brightness"] == 50
-    assert p["effect"] == "Modus: Manual / Timer"
+    assert p["effect"] == "Manual"
 
 
 def test_light_falls_back_to_mlevel_and_monoff_aliases():
@@ -168,3 +169,58 @@ def test_on_off_value_variants():
     for off_val in (0, False, "0", "false", "off", "OFF"):
         d = {"data": {"heater": {"mOnOff": off_val}}}
         assert normalize_status("ggs_1", d)["spiderfarmer/ggs_1/state/heater"] == "OFF"
+
+
+# ── Fan app-parity (extra fields) ───────────────────────────────────────────
+
+def test_fan_emits_mode_label_and_schedule_extras():
+    data = {"data": {"fan": {
+        "modeType": 1, "mOnOff": 1, "mLevel": 3,
+        "shakeLevel": 6, "natural": 1,
+        "minSpeed": 2, "maxSpeed": 5,
+        "timePeriod": [{"enabled": 1, "weekmask": 127,
+                        "startTime": 21600, "endTime": 72000}],
+        "cycleTime": {"weekmask": 127},
+    }}}
+    r = normalize_status("ggs_1", data)
+    assert r["spiderfarmer/ggs_1/state/fan/mode_label"] == "Schedule"
+    assert r["spiderfarmer/ggs_1/state/fan/schedule_speed"] == "5"
+    assert r["spiderfarmer/ggs_1/state/fan/standby_speed"] == "2"
+    assert r["spiderfarmer/ggs_1/state/fan/oscillation_level"] == "6"
+    assert r["spiderfarmer/ggs_1/state/fan/natural_wind"] == "ON"
+    assert r["spiderfarmer/ggs_1/state/fan/schedule_start"] == "06:00"
+    assert r["spiderfarmer/ggs_1/state/fan/schedule_end"] == "20:00"
+
+
+def test_fan_emits_cycle_extras():
+    data = {"data": {"fan": {
+        "modeType": 2, "mOnOff": 1,
+        "cycleTime": {"weekmask": 127, "startTime": 10800,
+                      "openDur": 600, "closeDur": 1200, "times": 5},
+    }}}
+    r = normalize_status("ggs_1", data)
+    assert r["spiderfarmer/ggs_1/state/fan/mode_label"] == "Cycle"
+    assert r["spiderfarmer/ggs_1/state/fan/cycle_start"] == "03:00"
+    assert r["spiderfarmer/ggs_1/state/fan/cycle_run_minutes"] == "10"
+    assert r["spiderfarmer/ggs_1/state/fan/cycle_off_minutes"] == "20"
+    assert r["spiderfarmer/ggs_1/state/fan/cycle_times"] == "5"
+
+
+def test_fan_environment_modetypes_map_to_labels():
+    for mt, expected in [(7, "Environment: Prioritize temperature"),
+                         (8, "Environment: Prioritize humidity"),
+                         (3, "Environment: Temperature only"),
+                         (4, "Environment: Humidity only"),
+                         (13, "Environment: Temperature & humidity")]:
+        data = {"data": {"fan": {"modeType": mt}}}
+        r = normalize_status("ggs_1", data)
+        assert r["spiderfarmer/ggs_1/state/fan/mode_label"] == expected
+
+
+def test_blower_also_gets_extras():
+    data = {"data": {"blower": {
+        "modeType": 1, "maxSpeed": 50, "minSpeed": 25,
+    }}}
+    r = normalize_status("ggs_1", data)
+    assert r["spiderfarmer/ggs_1/state/blower/mode_label"] == "Schedule"
+    assert r["spiderfarmer/ggs_1/state/blower/schedule_speed"] == "50"

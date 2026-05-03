@@ -64,6 +64,99 @@ def _switch(device_id: str, field: str, name: str, cfg: dict) -> Tuple[str, dict
     return f"homeassistant/switch/{uid}/config", payload
 
 
+def _number_path(device_id: str, path: str, suffix: str, name: str,
+                 min_val, max_val, step, cfg: dict, unit: str | None = None,
+                 device: dict | None = None) -> Tuple[str, dict]:
+    uid = f"spiderfarmer_{device_id}_{path}_{suffix}"
+    payload = {
+        "name": name,
+        "unique_id": uid,
+        "state_topic": f"spiderfarmer/{device_id}/state/{path}/{suffix}",
+        "command_topic": f"spiderfarmer/{device_id}/command/{path}/{suffix}/set",
+        "availability_topic": f"spiderfarmer/{device_id}/availability",
+        "min": min_val,
+        "max": max_val,
+        "step": step,
+        "entity_category": "config",
+        "device": device or _device_info(device_id, cfg),
+    }
+    if unit:
+        payload["unit_of_measurement"] = unit
+    return f"homeassistant/number/{uid}/config", payload
+
+
+def _text_path(device_id: str, path: str, suffix: str, name: str, pattern: str,
+               cfg: dict, device: dict | None = None) -> Tuple[str, dict]:
+    uid = f"spiderfarmer_{device_id}_{path}_{suffix}"
+    payload = {
+        "name": name,
+        "unique_id": uid,
+        "state_topic": f"spiderfarmer/{device_id}/state/{path}/{suffix}",
+        "command_topic": f"spiderfarmer/{device_id}/command/{path}/{suffix}/set",
+        "availability_topic": f"spiderfarmer/{device_id}/availability",
+        "pattern": pattern,
+        "entity_category": "config",
+        "device": device or _device_info(device_id, cfg),
+    }
+    return f"homeassistant/text/{uid}/config", payload
+
+
+def _switch_path(device_id: str, path: str, suffix: str, name: str, cfg: dict,
+                 device: dict | None = None) -> Tuple[str, dict]:
+    uid = f"spiderfarmer_{device_id}_{path}_{suffix}"
+    payload = {
+        "name": name,
+        "unique_id": uid,
+        "state_topic": f"spiderfarmer/{device_id}/state/{path}/{suffix}",
+        "command_topic": f"spiderfarmer/{device_id}/command/{path}/{suffix}/set",
+        "availability_topic": f"spiderfarmer/{device_id}/availability",
+        "payload_on": "ON",
+        "payload_off": "OFF",
+        "device": device or _device_info(device_id, cfg),
+    }
+    return f"homeassistant/switch/{uid}/config", payload
+
+
+def _number_path_aliased(device_id: str, path: str, suffix: str, alias: str,
+                         name: str, min_val, max_val, step, cfg: dict,
+                         unit: str | None = None,
+                         device: dict | None = None) -> Tuple[str, dict]:
+    """Like _number_path but lets the unique_id diverge from the topic. Used
+    to expose the same temperature-protection fields under two sub-devices
+    (Schedule and PPFD) — both control the same controller field, so the
+    state and command topics match, but HA needs distinct unique_ids."""
+    uid = f"spiderfarmer_{device_id}_{path}_{suffix}_{alias}"
+    payload = {
+        "name": name,
+        "unique_id": uid,
+        "state_topic": f"spiderfarmer/{device_id}/state/{path}/{suffix}",
+        "command_topic": f"spiderfarmer/{device_id}/command/{path}/{suffix}/set",
+        "availability_topic": f"spiderfarmer/{device_id}/availability",
+        "min": min_val,
+        "max": max_val,
+        "step": step,
+        "entity_category": "config",
+        "device": device or _device_info(device_id, cfg),
+    }
+    if unit:
+        payload["unit_of_measurement"] = unit
+    return f"homeassistant/number/{uid}/config", payload
+
+
+def _settings_subdevice(parent_id: str, parent_name: str, slug: str,
+                        suffix_name: str, model: str) -> dict:
+    """HA MQTT device-info for a settings sub-device, linked to the main
+    controller via via_device so HA renders it as a separate card on the
+    parent's device page."""
+    return {
+        "identifiers": [f"{parent_id}_{slug}"],
+        "name": f"{parent_name} {suffix_name}",
+        "manufacturer": "Spider Farmer",
+        "model": model,
+        "via_device": parent_id,
+    }
+
+
 def _light(device_id: str, module: str, name: str, cfg: dict) -> Tuple[str, dict]:
     uid = f"spiderfarmer_{device_id}_{module}"
     base = f"spiderfarmer/{device_id}"
@@ -76,15 +169,27 @@ def _light(device_id: str, module: str, name: str, cfg: dict) -> Tuple[str, dict
         "brightness": True,
         "brightness_scale": 100,
         "effect": True,
-        "effect_list": ["Modus: Manual / Timer", "Modus: PPFD"],
+        "effect_list": ["Manual", "Schedule", "PPFD"],
         "availability_topic": f"{base}/availability",
         "device": _device_info(device_id, cfg),
     }
     return f"homeassistant/light/{uid}/config", payload
 
 
+_FAN_PRESET_MODES = [
+    "Manual",
+    "Schedule",
+    "Cycle",
+    "Environment: Prioritize temperature",
+    "Environment: Prioritize humidity",
+    "Environment: Temperature only",
+    "Environment: Humidity only",
+    "Environment: Temperature & humidity",
+]
+
+
 def _fan(device_id: str, module: str, name: str, speed_max: int, cfg: dict,
-         oscillation: bool = False) -> Tuple[str, dict]:
+         oscillation: bool = False, preset_modes: bool = False) -> Tuple[str, dict]:
     uid = f"spiderfarmer_{device_id}_{module}"
     base = f"spiderfarmer/{device_id}"
     payload = {
@@ -111,7 +216,117 @@ def _fan(device_id: str, module: str, name: str, speed_max: int, cfg: dict,
             "payload_oscillation_on": "oscillate_on",
             "payload_oscillation_off": "oscillate_off",
         })
+    if preset_modes:
+        # Mirror the SF App's Modus dropdown — 8 modes including 5 Umwelt
+        # variants. Selection routes back via /command/{module}/preset_mode/set
+        # and resolves to the matching modeType in command_handler.
+        payload.update({
+            "preset_mode_state_topic": f"{base}/state/{module}/mode_label",
+            "preset_mode_command_topic": f"{base}/command/{module}/preset_mode/set",
+            "preset_modes": list(_FAN_PRESET_MODES),
+        })
     return f"homeassistant/fan/{uid}/config", payload
+
+
+def _light_extras(device_id: str, module: str, friendly: str, cfg: dict) -> list:
+    """Sub-device entities mirroring the SF App's "Lampe Einstellungen" screen
+    for one light. Two sub-devices linked via via_device:
+      - Schedule Mode: schedule_brightness, schedule_start/end, fade_minutes,
+        plus the Temperaturschutz fields (dim/off thresholds).
+      - PPFD Mode: ppfd_target/min/max/start/end/fade_minutes, plus the same
+        Temperaturschutz fields (per user request — Temperaturschutz applies
+        in both modes, so it is exposed in both groups rather than a
+        separate settings card).
+    Note: dim_threshold/off_threshold appear under each sub-device with
+    distinct unique_ids but identical state/command topics, so HA shows
+    them in both cards while a single change keeps them synchronized."""
+    parent_id = f"spiderfarmer_{device_id}"
+    sched_dev = _settings_subdevice(parent_id, friendly, f"{module}_schedule",
+                                    "Schedule Mode", "Schedule settings")
+    ppfd_dev = _settings_subdevice(parent_id, friendly, f"{module}_ppfd",
+                                   "PPFD Mode", "PPFD settings")
+    HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
+    return [
+        # Schedule Mode
+        _number_path(device_id, module, "schedule_brightness",
+                     "Brightness", 0, 100, 1, cfg, unit="%", device=sched_dev),
+        _text_path(device_id, module, "schedule_start",
+                   "Start Time", HHMM, cfg, device=sched_dev),
+        _text_path(device_id, module, "schedule_end",
+                   "End Time", HHMM, cfg, device=sched_dev),
+        _number_path(device_id, module, "fade_minutes",
+                     "Fade Time", 0, 240, 1, cfg, unit="min", device=sched_dev),
+        # Temperaturschutz under Schedule
+        _number_path_aliased(device_id, module, "dim_threshold", "schedule",
+                             "Dim Threshold", 0, 50, 0.1, cfg,
+                             unit="°C", device=sched_dev),
+        _number_path_aliased(device_id, module, "off_threshold", "schedule",
+                             "Off Threshold", 0, 50, 0.1, cfg,
+                             unit="°C", device=sched_dev),
+        # PPFD Mode
+        _number_path(device_id, module, "ppfd_target",
+                     "Target PPFD", 0, 1000, 1, cfg,
+                     unit="µmol/m²/s", device=ppfd_dev),
+        _number_path(device_id, module, "ppfd_min",
+                     "Min Brightness", 0, 100, 1, cfg, unit="%", device=ppfd_dev),
+        _number_path(device_id, module, "ppfd_max",
+                     "Max Brightness", 0, 100, 1, cfg, unit="%", device=ppfd_dev),
+        _text_path(device_id, module, "ppfd_start",
+                   "Start Time", HHMM, cfg, device=ppfd_dev),
+        _text_path(device_id, module, "ppfd_end",
+                   "End Time", HHMM, cfg, device=ppfd_dev),
+        _number_path(device_id, module, "ppfd_fade_minutes",
+                     "Fade Time", 0, 240, 1, cfg, unit="min", device=ppfd_dev),
+        # Temperaturschutz under PPFD (same topics, distinct unique_id)
+        _number_path_aliased(device_id, module, "dim_threshold", "ppfd",
+                             "Dim Threshold", 0, 50, 0.1, cfg,
+                             unit="°C", device=ppfd_dev),
+        _number_path_aliased(device_id, module, "off_threshold", "ppfd",
+                             "Off Threshold", 0, 50, 0.1, cfg,
+                             unit="°C", device=ppfd_dev),
+    ]
+
+
+def _fan_extras(device_id: str, module: str, friendly: str, cfg: dict) -> list:
+    """Sub-device entities mirroring the SF App's Lüfter-Einstellungen screen
+    for one fan/blower. Three sub-devices linked via via_device:
+      - Zeitfenstermodus: schedule_start, schedule_end
+      - Zyklusmodus: cycle_start, cycle_run, cycle_off, cycle_times
+      - Geschwindigkeiten: schedule_speed, standby_speed, oscillation_level
+    Plus a switch on the main device for natural_wind."""
+    parent_id = f"spiderfarmer_{device_id}"
+    sched_dev = _settings_subdevice(parent_id, friendly, f"{module}_schedule",
+                                    "Schedule Mode", "Schedule settings")
+    cycle_dev = _settings_subdevice(parent_id, friendly, f"{module}_cycle",
+                                    "Cycle Mode", "Cycle settings")
+    speeds_dev = _settings_subdevice(parent_id, friendly, f"{module}_speeds",
+                                     "Speeds", "Speed settings")
+    HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
+    return [
+        # Schedule Mode
+        _text_path(device_id, module, "schedule_start",
+                   "Start Time", HHMM, cfg, device=sched_dev),
+        _text_path(device_id, module, "schedule_end",
+                   "End Time", HHMM, cfg, device=sched_dev),
+        # Cycle Mode
+        _text_path(device_id, module, "cycle_start",
+                   "Start Time", HHMM, cfg, device=cycle_dev),
+        _number_path(device_id, module, "cycle_run_minutes",
+                     "Run Time", 0, 1440, 1, cfg, unit="min", device=cycle_dev),
+        _number_path(device_id, module, "cycle_off_minutes",
+                     "Off Time", 0, 1440, 1, cfg, unit="min", device=cycle_dev),
+        _number_path(device_id, module, "cycle_times",
+                     "Cycles", 1, 100, 1, cfg, device=cycle_dev),
+        # Speeds (catch-all fan settings — applies across all modes)
+        _number_path(device_id, module, "schedule_speed",
+                     "Speed", 1, 10, 1, cfg, device=speeds_dev),
+        _number_path(device_id, module, "standby_speed",
+                     "Standby Speed", 0, 10, 1, cfg, device=speeds_dev),
+        _number_path(device_id, module, "oscillation_level",
+                     "Oscillation", 0, 10, 1, cfg, device=speeds_dev),
+        _switch_path(device_id, module, "natural_wind",
+                     "Natural Wind", cfg, device=speeds_dev),
+    ]
 
 
 def publish_discovery_for_device(
@@ -132,12 +347,22 @@ def publish_discovery_for_device(
     ]
 
     # ── Light ─────────────────────────────────────────────────────────────────
+    # Light 1 gets the new app-parity entities (Schedule Mode + PPFD Mode
+    # sub-devices). Light 2 stays as the simple variant — only Light 1 was
+    # exposed via the SF App's settings screen the user mirrored.
     entities.append(_light(device_id, "light",  "Light 1", device_cfg))
+    entities += _light_extras(device_id, "light", "Light 1", device_cfg)
     entities.append(_light(device_id, "light2", "Light 2", device_cfg))
 
     # ── Fans ──────────────────────────────────────────────────────────────────
-    entities.append(_fan(device_id, "blower", "Fan Exhaust",     100, device_cfg))
-    entities.append(_fan(device_id, "fan", "Fan Circulation", 10, device_cfg))
+    entities.append(_fan(device_id, "blower", "Fan Exhaust", 100, device_cfg))
+    # Fan Circulation gets the new app-parity entities: preset_modes on the
+    # main fan plus three sub-devices (Schedule Mode, Cycle Mode, Speeds)
+    # and a switch for natural wind. Fan Exhaust (blower) is intentionally
+    # left as the simple variant for now — same pattern, follow-up.
+    entities.append(_fan(device_id, "fan", "Fan Circulation", 10, device_cfg,
+                         preset_modes=True))
+    entities += _fan_extras(device_id, "fan", "Fan", device_cfg)
 
     # ── Soil sensors (average) ────────────────────────────────────────────────
     entities += [

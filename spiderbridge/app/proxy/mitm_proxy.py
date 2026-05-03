@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import ssl
+import time
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -12,13 +13,12 @@ from .mqtt_parser import (
     parse_packets, build_publish,
     MQTT_PUBLISH, MQTT_CONNECT, MQTT_SUBSCRIBE,
 )
-from .normalizer import normalize_status
+from .normalizer import normalize_status, fan_extras_topics, light_extras_topics
 from ha.discovery import (
     publish_soil_sensor_discovery as _publish_soil_sensor_discovery,
     unpublish_outlet_discovery as _unpublish_outlet_discovery,
 )
 from .command_handler import translate_command
-
 from .config import HA_OPTIONS_PATH, HA_DEVICES_PATH
 
 logger = logging.getLogger(__name__)
@@ -46,11 +46,23 @@ class ProxySession:
         self.last_nonzero_level: Dict[str, int] = {}  # module → last brightness > 0
         # SF protocol topic-prefix learned from observed cloud→device traffic.
         # Defaults to "CB" (Control Box) but PS5/PS10/LC may use a different
-        # value; using the wrong prefix means our injects are silently ignored.
+        # value; using the wrong prefix means our injects are silently
+        # ignored by the controller that subscribes elsewhere.
         self.down_topic_prefix: str = "CB"
         # Static discovery publishes outlets 1..10 unconditionally; once the
         # controller reports its actual outlet set we unpublish the rest.
         self._outlet_discovery_pruned: bool = False
+        # Full last-known fan/blower blocks for app-parity write paths.
+        # getDevSta carries only minimal state ({on, level}); cloud
+        # setConfigField traffic carries the schedule/cycle/speeds we
+        # need to merge against on HA writes.
+        self.fan_state: Dict[str, dict] = {}
+        # Same idea for light: getDevSta on some firmwares omits
+        # modeType, so we cache it from observed setConfigField traffic
+        # and from our own injects. Used by the normalizer as a fallback
+        # so the HA effect dropdown stays consistent with what the
+        # controller is actually doing.
+        self.light_state: Dict[str, dict] = {}
 
     def set_upstream(self, writer: asyncio.StreamWriter) -> None:
         self._upstream_writer = writer
@@ -145,6 +157,10 @@ class MITMProxy:
         return None
 
     def _save_config(self) -> None:
+        """Persist current in-memory config. Under HA OS the addon writes
+        only the devices list to /data/devices.yaml (the rest of the addon
+        config is read-only options). Standalone falls back to the full
+        config.yaml at the configured path."""
         if Path(HA_OPTIONS_PATH).exists():
             try:
                 with open(HA_DEVICES_PATH, "w") as f:
@@ -159,6 +175,50 @@ class MITMProxy:
                 logger.info("config.yaml aktualisiert.")
             except Exception as e:
                 logger.error("Fehler beim Speichern von config.yaml: %s", e)
+
+    async def poll_session_config(self, sess: ProxySession) -> None:
+        """Inject one round of getConfigField for light/light2/fan/blower
+        into a single session. Called on session connect (immediate poll)
+        and periodically by config_poll_loop."""
+        for keypath in (["device", "light"], ["device", "light2"],
+                        ["device", "fan"], ["device", "blower"]):
+            try:
+                await sess.inject({
+                    "method": "getConfigField",
+                    "pid": sess.mac,
+                    "params": {"keyPath": keypath},
+                    "msgId": str(int(time.time() * 1000)),
+                    "uid": sess.uid,
+                })
+            except Exception as e:
+                logger.debug("config poll inject failed for %s: %s",
+                             keypath, e)
+            # Space out so we don't flood the controller in one burst
+            await asyncio.sleep(0.5)
+
+    async def config_poll_loop(self) -> None:
+        """Periodically poll every active controller session. Each session
+        also gets an immediate one-shot poll on connect (handle_client),
+        so this loop only owns the recurring tick.
+
+        Interval is configurable via proxy.config_poll_interval_sec
+        (default 600 = 10 minutes). Set to 0 to disable."""
+        interval = int(self.config.get("proxy", {}).get("config_poll_interval_sec", 600))
+        if interval <= 0:
+            logger.info("Config poll disabled (interval=%s)", interval)
+            return
+        logger.info("Config poll loop started, interval=%ds", interval)
+        while True:
+            try:
+                await asyncio.sleep(interval)
+                for sess in list(self._sessions.values()):
+                    await self.poll_session_config(sess)
+            except asyncio.CancelledError:
+                logger.info("Config poll loop stopped")
+                break
+            except Exception as e:
+                logger.warning("Config poll loop error: %s", e)
+                await asyncio.sleep(30)
 
     async def handle_command(self, topic: str, value: str) -> None:
         """Handle an incoming HA command from local Mosquitto."""
@@ -181,9 +241,35 @@ class MITMProxy:
 
         payload = translate_command(field, value, session.mac, session.uid, outlet_num,
                                     device_state=session.device_state, subfield=subfield,
-                                    last_nonzero_level=session.last_nonzero_level)
+                                    last_nonzero_level=session.last_nonzero_level,
+                                    fan_state=session.fan_state,
+                                    light_state=session.light_state)
         if payload:
             await session.inject(payload)
+            # Optimistic update: write the fan/blower fields to the cache and
+            # publish per-field state topics so the new HA entities reflect
+            # the change without waiting for the next observed cloud echo.
+            params = payload.get("params", {})
+            for k in ("fan", "blower"):
+                blk = params.get(k)
+                if isinstance(blk, dict):
+                    session.fan_state[k] = blk
+                    for tpc, val in fan_extras_topics(session.device_id, k, blk).items():
+                        self.mqtt_client.publish(tpc, val, retain=True)
+            # Same for light — and refresh the main state/light JSON so
+            # the HA effect dropdown reflects the new mode immediately
+            # rather than waiting for the next getDevSta (which on some
+            # firmwares does not even carry modeType).
+            for k in ("light", "light2"):
+                blk = params.get(k)
+                if isinstance(blk, dict):
+                    session.light_state[k] = blk
+                    refreshed = normalize_status(
+                        session.device_id, {"data": {k: blk}},
+                        light_cache=session.light_state,
+                    )
+                    for tpc, val in refreshed.items():
+                        self.mqtt_client.publish(tpc, val, retain=True)
 
     async def handle_client(
         self,
@@ -221,6 +307,15 @@ class MITMProxy:
                 self._sessions[s.device_id] = s
                 s.publish_availability("online")
                 logger.info("Session erstellt: device_id=%s mac=%s", s.device_id, s.mac)
+                # Immediate one-shot config poll so HA caches refresh on
+                # restart/reconnect rather than waiting for the next 10-min
+                # tick. Detached so the connect path doesn't block on it.
+                async def _initial_poll():
+                    # Small delay so the controller has finished its CONNECT
+                    # handshake before we start firing extra requests at it.
+                    await asyncio.sleep(3)
+                    await self.poll_session_config(s)
+                asyncio.create_task(_initial_poll())
                 return s
 
             async def relay_up():
@@ -277,14 +372,14 @@ class MITMProxy:
                         pass
 
             async def relay_down():
-                # Forward server→device traffic unchanged. Earlier we mutated
-                # setConfigField bodies here to keep HA's last command sticky
-                # against SF cloud corrections, but that fought legitimate
-                # app/cloud commands and made the lamp uncontrollable except
-                # from bluetooth-paired sessions. Now the path is read-only
-                # and only learns: per-outlet config blocks for cache replay,
-                # and the cloud's DOWN topic prefix so injects target the
-                # same one the controller actually subscribes to.
+                # Forward server→device traffic unchanged. Earlier we parsed
+                # packets here and mutated setConfigField bodies to keep HA's
+                # last command sticky against the SF cloud's corrections, but
+                # that fought legitimate app/cloud commands and made the lamp
+                # uncontrollable except from bluetooth-paired sessions.
+                # Diagnostic-only parsing here logs outlet-related commands
+                # from the SF cloud/app so we can compare what the official
+                # app sends vs what we send for PS5/PS10 outlet control.
                 buf_down = b""
                 try:
                     while True:
@@ -294,6 +389,7 @@ class MITMProxy:
                             break
                         if not data:
                             break
+                        # Forward bytes unchanged FIRST, then try to parse for logging
                         try:
                             client_writer.write(data)
                             await client_writer.drain()
@@ -305,6 +401,9 @@ class MITMProxy:
                             for p in packets:
                                 if (p.packet_type == MQTT_PUBLISH and p.topic
                                         and "/API/DOWN/" in p.topic and p.message):
+                                    # Learn the cloud's DOWN topic prefix so our
+                                    # injects target the same one (PS5/PS10 may
+                                    # not be CB).
                                     sess = nonlocal_session[0]
                                     if sess is not None:
                                         topic_parts = p.topic.split("/")
@@ -331,7 +430,40 @@ class MITMProxy:
                                             p.topic, keypath,
                                             json.dumps(params, separators=(',', ':')),
                                         )
+                                    # Fan feature-parity capture: log every
+                                    # cloud-side setConfigField for fan/blower
+                                    # at INFO level on this branch so we can
+                                    # reverse-engineer the SF App's fan
+                                    # settings screen field-by-field.
+                                    if "fan" in keypath or "blower" in keypath:
+                                        logger.info(
+                                            "[FAN-CAPTURE] keyPath=%s params=%s",
+                                            keypath,
+                                            json.dumps(params, separators=(',', ':')),
+                                        )
+                                        sess = nonlocal_session[0]
+                                        if sess is not None:
+                                            for k in ("fan", "blower"):
+                                                if k in keypath and isinstance(params.get(k), dict):
+                                                    sess.fan_state[k] = params[k]
+                                                    for tpc, val in fan_extras_topics(
+                                                            sess.device_id, k, params[k]).items():
+                                                        self.mqtt_client.publish(tpc, val, retain=True)
+                                    if "light" in keypath or "light2" in keypath:
+                                        sess = nonlocal_session[0]
+                                        if sess is not None:
+                                            for k in ("light", "light2"):
+                                                if k in keypath and isinstance(params.get(k), dict):
+                                                    sess.light_state[k] = params[k]
+                                                    # Also push the per-field
+                                                    # extras so HA settings
+                                                    # entities populate even
+                                                    # without a getDevSta echo.
+                                                    for tpc, val in light_extras_topics(
+                                                            sess.device_id, k, params[k]).items():
+                                                        self.mqtt_client.publish(tpc, val, retain=True)
                         except Exception as e:
+                            # Never let logging break the relay
                             logger.debug("relay_down parse error (non-fatal): %s", e)
                             buf_down = b""
                 finally:
@@ -391,8 +523,15 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
     except Exception:
         return
     method = data.get("method")
-    if method != "getDevSta":
+    # Accept any UP message that carries a data block — getDevSta is the
+    # main one, but getConfigField responses (when the controller honors
+    # them) come through here too. Setup-Acks without payload data fall
+    # through harmlessly because their "data" dict has no module blocks.
+    if method not in ("getDevSta", "getConfigField"):
         return
+    if method == "getConfigField":
+        logger.info("[CONFIG-RESP] data=%s",
+                    json.dumps(data.get("data", {}), separators=(',', ':'))[:500])
 
     # Keep UID up to date from controller messages
     uid = data.get("uid", "")
@@ -403,7 +542,19 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
     d = data.get("data", {})
     for module in ("light", "light2", "blower", "fan", "heater", "humidifier", "dehumidifier"):
         if module in d:
-            session.device_state[module] = d[module]
+            # Merge instead of replace — getDevSta on some firmwares carries
+            # only {on, level} for light/fan, which would wipe cached fields
+            # (modeType, schedule, etc) we need to keep.
+            session.device_state.setdefault(module, {}).update(d[module])
+    # Also feed light/fan caches from rich UP messages (getConfigField
+    # responses, full setConfigField echoes). Same merge semantics so
+    # minimal getDevSta echoes don't clobber the cached schedule/cycle.
+    for module in ("light", "light2"):
+        if module in d and isinstance(d[module], dict):
+            session.light_state.setdefault(module, {}).update(d[module])
+    for module in ("fan", "blower"):
+        if module in d and isinstance(d[module], dict):
+            session.fan_state.setdefault(module, {}).update(d[module])
 
     # Remember last non-zero brightness so OFF→ON restores the previous level
     for module in ("light", "light2"):
@@ -438,7 +589,11 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
                             session.device_id, sorted(present))
                 session._outlet_discovery_pruned = True
 
-    normalized = normalize_status(session.device_id, data)
+    normalized = normalize_status(
+        session.device_id, data,
+        light_cache=getattr(session, "light_state", None),
+        fan_cache=getattr(session, "fan_state", None),
+    )
     for norm_topic, value in normalized.items():
         mqtt_client.publish(norm_topic, value, retain=True)
 

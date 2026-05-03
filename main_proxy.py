@@ -52,9 +52,19 @@ def main() -> None:
         loop.add_signal_handler(signal.SIGTERM, stop.set)
         loop.add_signal_handler(signal.SIGINT, stop.set)
 
+        # Background task: periodically pull fresh config from active
+        # controllers so HA entities stay in sync with App-side changes
+        # the user makes without having to interact with HA.
+        poll_task = asyncio.create_task(proxy.config_poll_loop())
+
         logger.info("Proxy listening on %s:%s", pcfg["listen_host"], pcfg["listen_port"])
         async with server:
             await stop.wait()
+        poll_task.cancel()
+        try:
+            await poll_task
+        except asyncio.CancelledError:
+            pass
         logger.info("Shutting down")
 
     try:

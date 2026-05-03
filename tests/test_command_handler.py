@@ -23,7 +23,7 @@ def test_outlet_off():
 # ── Light / Light2 ──────────────────────────────────────────────────────────
 
 def test_light_full_json_payload_with_ppfd_mode():
-    val = json.dumps({"state": "ON", "brightness": 80, "effect": "Modus: PPFD"})
+    val = json.dumps({"state": "ON", "brightness": 80, "effect": "PPFD"})
     r = translate_command("light", val, "AABBCC", "uid1")
     assert r["params"]["keyPath"] == ["device", "light"]
     assert r["params"]["light"]["mOnOff"] == 1
@@ -32,14 +32,29 @@ def test_light_full_json_payload_with_ppfd_mode():
 
 
 def test_light2_full_json_payload_with_manual_mode():
-    # "Modus: Manual / Timer" effect maps to modeType 0 (Manual). Sending
-    # modeType 1 (Timer) makes the controller follow the schedule and ignore
-    # direct mOnOff/mLevel commands, which broke HA control of the lamp.
-    val = json.dumps({"state": "ON", "brightness": 50, "effect": "Modus: Manual / Timer"})
+    val = json.dumps({"state": "ON", "brightness": 50, "effect": "Manual"})
     r = translate_command("light2", val, "AABBCC", "uid1")
     assert r["params"]["keyPath"] == ["device", "light2"]
     assert r["params"]["light2"]["modeType"] == 0
     assert r["params"]["light2"]["mLevel"] == 50
+
+
+def test_light_schedule_mode_maps_to_modeType_1():
+    # "Schedule" effect must produce modeType=1 (Zeitfenstermodus); older
+    # code merged 0 and 1 under one label which made schedule-mode
+    # selection a no-op.
+    val = json.dumps({"state": "ON", "brightness": 70, "effect": "Schedule"})
+    r = translate_command("light", val, "AABBCC", "uid1")
+    assert r["params"]["light"]["modeType"] == 1
+
+
+def test_light_legacy_effect_label_still_resolves_to_manual():
+    # Old HA configs that have "Modus: Manual / Timer" stored as the effect
+    # should still work after the rename — the alias keeps them on
+    # modeType=0 instead of falling through to the default.
+    val = json.dumps({"state": "ON", "effect": "Modus: Manual / Timer"})
+    r = translate_command("light", val, "AABBCC", "uid1")
+    assert r["params"]["light"]["modeType"] == 0
 
 
 def test_light_default_mode_is_manual():
@@ -225,3 +240,250 @@ def test_payload_includes_pid_uid_and_msg_id():
     # msgId is a string of millisecond timestamp
     assert isinstance(r["msgId"], str)
     assert int(r["msgId"]) > 0
+
+
+# ── Fan app-parity (preset_mode + subfield writes) ──────────────────────────
+
+def test_fan_preset_mode_maps_label_to_modeType():
+    cached = {"fan": {"modeType": 0, "mOnOff": 1, "mLevel": 3,
+                      "shakeLevel": 0, "natural": 0,
+                      "timePeriod": [{"weekmask": 127}],
+                      "cycleTime": {"weekmask": 127}}}
+    r = translate_command("fan", "Environment: Prioritize temperature",
+                          "AABBCC", "uid1",
+                          subfield="preset_mode", fan_state=cached)
+    assert r["params"]["fan"]["modeType"] == 7
+    # other fields preserved
+    assert r["params"]["fan"]["mLevel"] == 3
+    assert r["params"]["fan"]["shakeLevel"] == 0
+
+
+def test_fan_preset_mode_unknown_label_returns_none():
+    r = translate_command("fan", "Bogus Mode", "AABBCC", "uid1",
+                          subfield="preset_mode", fan_state={})
+    assert r is None
+
+
+def test_fan_schedule_start_parses_hhmm():
+    r = translate_command("fan", "07:30", "AABBCC", "uid1",
+                          subfield="schedule_start", fan_state={})
+    assert r["params"]["fan"]["timePeriod"][0]["startTime"] == 7 * 3600 + 30 * 60
+
+
+def test_fan_cycle_run_minutes_to_seconds():
+    r = translate_command("fan", "10", "AABBCC", "uid1",
+                          subfield="cycle_run_minutes", fan_state={})
+    assert r["params"]["fan"]["cycleTime"]["openDur"] == 600
+
+
+def test_fan_cycle_times_clamped_to_100():
+    r = translate_command("fan", "9999", "AABBCC", "uid1",
+                          subfield="cycle_times", fan_state={})
+    assert r["params"]["fan"]["cycleTime"]["times"] == 100
+
+
+def test_fan_schedule_speed_clamped_to_10():
+    r = translate_command("fan", "15", "AABBCC", "uid1",
+                          subfield="schedule_speed", fan_state={})
+    assert r["params"]["fan"]["maxSpeed"] == 10
+
+
+def test_fan_schedule_speed_also_writes_mlevel_for_manual_mode():
+    # Manual mode reads mLevel, Schedule/Cycle/Env modes read maxSpeed.
+    # The single HA "Speed" entity must change the fan regardless of
+    # which mode is currently active, so we set both.
+    r = translate_command("fan", "5", "AABBCC", "uid1",
+                          subfield="schedule_speed", fan_state={})
+    assert r["params"]["fan"]["maxSpeed"] == 5
+    assert r["params"]["fan"]["mLevel"] == 5
+
+
+def test_fan_standby_speed_zero_means_aus():
+    r = translate_command("fan", "0", "AABBCC", "uid1",
+                          subfield="standby_speed", fan_state={})
+    assert r["params"]["fan"]["minSpeed"] == 0
+
+
+def test_fan_oscillation_level_writes_shake_level():
+    r = translate_command("fan", "7", "AABBCC", "uid1",
+                          subfield="oscillation_level", fan_state={})
+    assert r["params"]["fan"]["shakeLevel"] == 7
+
+
+def test_fan_natural_wind_on_off():
+    on = translate_command("fan", "ON", "AABBCC", "uid1",
+                           subfield="natural_wind", fan_state={})
+    off = translate_command("fan", "OFF", "AABBCC", "uid1",
+                            subfield="natural_wind", fan_state={})
+    assert on["params"]["fan"]["natural"] == 1
+    assert off["params"]["fan"]["natural"] == 0
+
+
+def test_fan_subfield_targets_blower_keypath_when_field_is_blower():
+    r = translate_command("blower", "5", "AABBCC", "uid1",
+                          subfield="schedule_speed", fan_state={})
+    assert r["params"]["keyPath"] == ["device", "blower"]
+    assert "blower" in r["params"]
+    assert r["params"]["blower"]["maxSpeed"] == 5
+
+
+# ── Light app-parity (subfield writes) ─────────────────────────────────────
+
+def _light_block(**overrides):
+    """Realistic cached light block as observed from cloud setConfigField."""
+    blk = {
+        "modeType": 1, "lastAutoModeType": 0, "mOnOff": 1, "mLevel": 65,
+        "darkTemp": 0, "offTemp": 0,
+        "timePeriod": [{"enabled": 1, "weekmask": 127,
+                        "startTime": 21600, "endTime": 72000,
+                        "brightness": 65, "fadeTime": 900}],
+        "ppfdPeriod": [{"enabled": 0, "weekmask": 127,
+                        "startTime": 0, "endTime": 0,
+                        "brightness": 20, "fadeTime": 0}],
+        "ppfdMinBrightness": 0, "ppfdMaxBrightness": 100,
+    }
+    blk.update(overrides)
+    return {"light": blk}
+
+
+def test_light_schedule_brightness_subfield():
+    cached = _light_block()
+    r = translate_command("light", "80", "AABBCC", "uid1",
+                          subfield="schedule_brightness", light_state=cached)
+    assert r["params"]["keyPath"] == ["device", "light"]
+    assert r["params"]["light"]["timePeriod"][0]["brightness"] == 80
+
+
+def test_light_schedule_brightness_clamped():
+    r = translate_command("light", "999", "AABBCC", "uid1",
+                          subfield="schedule_brightness", light_state=_light_block())
+    assert r["params"]["light"]["timePeriod"][0]["brightness"] == 100
+
+
+def test_light_schedule_start_parses_hhmm():
+    r = translate_command("light", "06:30", "AABBCC", "uid1",
+                          subfield="schedule_start", light_state=_light_block())
+    assert r["params"]["light"]["timePeriod"][0]["startTime"] == 6 * 3600 + 30 * 60
+
+
+def test_light_schedule_end_parses_hhmm():
+    r = translate_command("light", "20:00", "AABBCC", "uid1",
+                          subfield="schedule_end", light_state=_light_block())
+    assert r["params"]["light"]["timePeriod"][0]["endTime"] == 20 * 3600
+
+
+def test_light_fade_minutes_to_seconds():
+    r = translate_command("light", "15", "AABBCC", "uid1",
+                          subfield="fade_minutes", light_state=_light_block())
+    assert r["params"]["light"]["timePeriod"][0]["fadeTime"] == 900
+
+
+def test_light_dim_threshold_writes_dark_temp():
+    r = translate_command("light", "27.5", "AABBCC", "uid1",
+                          subfield="dim_threshold", light_state=_light_block())
+    assert r["params"]["light"]["darkTemp"] == 27.5
+
+
+def test_light_off_threshold_writes_off_temp():
+    r = translate_command("light", "30", "AABBCC", "uid1",
+                          subfield="off_threshold", light_state=_light_block())
+    assert r["params"]["light"]["offTemp"] == 30.0
+
+
+def test_light_ppfd_target_writes_ppfd_period_brightness():
+    r = translate_command("light", "650", "AABBCC", "uid1",
+                          subfield="ppfd_target", light_state=_light_block())
+    assert r["params"]["light"]["ppfdPeriod"][0]["brightness"] == 650
+
+
+def test_light_ppfd_target_clamped_to_1000():
+    r = translate_command("light", "9999", "AABBCC", "uid1",
+                          subfield="ppfd_target", light_state=_light_block())
+    assert r["params"]["light"]["ppfdPeriod"][0]["brightness"] == 1000
+
+
+def test_light_ppfd_min_max_clamped_to_100():
+    rmin = translate_command("light", "150", "AABBCC", "uid1",
+                             subfield="ppfd_min", light_state=_light_block())
+    rmax = translate_command("light", "200", "AABBCC", "uid1",
+                             subfield="ppfd_max", light_state=_light_block())
+    assert rmin["params"]["light"]["ppfdMinBrightness"] == 100
+    assert rmax["params"]["light"]["ppfdMaxBrightness"] == 100
+
+
+def test_light_ppfd_start_end_parses_hhmm():
+    rs = translate_command("light", "07:15", "AABBCC", "uid1",
+                           subfield="ppfd_start", light_state=_light_block())
+    re = translate_command("light", "19:45", "AABBCC", "uid1",
+                           subfield="ppfd_end", light_state=_light_block())
+    assert rs["params"]["light"]["ppfdPeriod"][0]["startTime"] == 7 * 3600 + 15 * 60
+    assert re["params"]["light"]["ppfdPeriod"][0]["endTime"] == 19 * 3600 + 45 * 60
+
+
+def test_light_ppfd_fade_minutes_to_seconds():
+    r = translate_command("light", "5", "AABBCC", "uid1",
+                          subfield="ppfd_fade_minutes", light_state=_light_block())
+    assert r["params"]["light"]["ppfdPeriod"][0]["fadeTime"] == 300
+
+
+def test_light_subfield_with_empty_cache_synthesizes_default_block():
+    # No cached block — translator must still produce a valid setConfigField.
+    # Otherwise the controller silently rejects partial writes.
+    r = translate_command("light", "07:00", "AABBCC", "uid1",
+                          subfield="schedule_start", light_state={})
+    assert r is not None
+    blk = r["params"]["light"]
+    assert blk["timePeriod"][0]["startTime"] == 7 * 3600
+    # Synthesized defaults present
+    assert "ppfdPeriod" in blk
+    assert "darkTemp" in blk
+
+
+def test_light_subfield_preserves_cached_block_other_fields():
+    cached = _light_block(modeType=12, mLevel=50)
+    r = translate_command("light", "55", "AABBCC", "uid1",
+                          subfield="ppfd_min", light_state=cached)
+    out = r["params"]["light"]
+    # Changed
+    assert out["ppfdMinBrightness"] == 55
+    # Untouched
+    assert out["modeType"] == 12
+    assert out["mLevel"] == 50
+    assert out["timePeriod"][0]["brightness"] == 65
+
+
+def test_light2_subfield_targets_light2_keypath():
+    r = translate_command("light2", "08:00", "AABBCC", "uid1",
+                          subfield="schedule_start",
+                          light_state={"light2": {"timePeriod": [{}]}})
+    assert r["params"]["keyPath"] == ["device", "light2"]
+    assert "light2" in r["params"]
+
+
+def test_light_invalid_numeric_subfield_returns_none():
+    r = translate_command("light", "abc", "AABBCC", "uid1",
+                          subfield="schedule_brightness", light_state=_light_block())
+    assert r is None
+
+
+def test_fan_subfield_preserves_cached_block_other_fields():
+    cached = {"fan": {
+        "modeType": 2, "mOnOff": 1, "mLevel": 3,
+        "shakeLevel": 6, "natural": 1,
+        "minSpeed": 1, "maxSpeed": 5,
+        "timePeriod": [{"enabled": 1, "weekmask": 127,
+                        "startTime": 3600, "endTime": 7200}],
+        "cycleTime": {"weekmask": 127, "startTime": 10800,
+                      "openDur": 600, "closeDur": 1200, "times": 5},
+    }}
+    r = translate_command("fan", "20", "AABBCC", "uid1",
+                          subfield="cycle_run_minutes", fan_state=cached)
+    out = r["params"]["fan"]
+    # Changed
+    assert out["cycleTime"]["openDur"] == 1200
+    # Untouched
+    assert out["cycleTime"]["closeDur"] == 1200
+    assert out["cycleTime"]["times"] == 5
+    assert out["modeType"] == 2
+    assert out["maxSpeed"] == 5
+    assert out["natural"] == 1
