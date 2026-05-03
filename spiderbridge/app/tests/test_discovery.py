@@ -140,11 +140,9 @@ def test_publish_discovery_device_info_consistent(mocker):
         ("spiderfarmer_ggs_1_fan_schedule",),
         ("spiderfarmer_ggs_1_fan_cycle",),
         ("spiderfarmer_ggs_1_fan_env",),
-        ("spiderfarmer_ggs_1_fan_speeds",),
         ("spiderfarmer_ggs_1_blower_schedule",),
         ("spiderfarmer_ggs_1_blower_cycle",),
         ("spiderfarmer_ggs_1_blower_env",),
-        ("spiderfarmer_ggs_1_blower_speeds",),
         ("spiderfarmer_ggs_1_light_schedule",),
         ("spiderfarmer_ggs_1_light_ppfd",),
     }
@@ -209,6 +207,9 @@ def test_publish_discovery_emits_fan_preset_modes(mocker):
 
 
 def test_publish_discovery_emits_fan_extras(mocker):
+    # No standalone Speeds sub-device anymore — Speed / Standby Speed /
+    # Oscillation / Natural Wind are aliased into each of the three mode
+    # cards (Schedule, Cycle, Environment) instead.
     client = mocker.MagicMock()
     publish_discovery_for_device(client, "ggs_1", CFG)
     topics = {call.args[0] for call in client.publish.call_args_list}
@@ -221,12 +222,16 @@ def test_publish_discovery_emits_fan_extras(mocker):
     assert "homeassistant/number/spiderfarmer_ggs_1_fan_cycle_run_minutes/config" in topics
     assert "homeassistant/number/spiderfarmer_ggs_1_fan_cycle_off_minutes/config" in topics
     assert "homeassistant/number/spiderfarmer_ggs_1_fan_cycle_times/config" in topics
-    # Speeds sub-device
-    assert "homeassistant/number/spiderfarmer_ggs_1_fan_schedule_speed/config" in topics
-    assert "homeassistant/number/spiderfarmer_ggs_1_fan_standby_speed/config" in topics
-    assert "homeassistant/number/spiderfarmer_ggs_1_fan_oscillation_level/config" in topics
-    # Natural wind on main device (switch)
-    assert "homeassistant/switch/spiderfarmer_ggs_1_fan_natural_wind/config" in topics
+    # Shared speed/oscillation/natural-wind aliased into each mode card
+    for alias in ("schedule", "cycle", "env"):
+        assert f"homeassistant/number/spiderfarmer_ggs_1_fan_schedule_speed_{alias}/config" in topics
+        assert f"homeassistant/number/spiderfarmer_ggs_1_fan_standby_speed_{alias}/config" in topics
+        assert f"homeassistant/number/spiderfarmer_ggs_1_fan_oscillation_level_{alias}/config" in topics
+        assert f"homeassistant/switch/spiderfarmer_ggs_1_fan_natural_wind_{alias}/config" in topics
+    # No primary unaliased entities for these — the Speeds card is gone
+    assert "homeassistant/number/spiderfarmer_ggs_1_fan_schedule_speed/config" not in topics
+    assert "homeassistant/number/spiderfarmer_ggs_1_fan_oscillation_level/config" not in topics
+    assert "homeassistant/switch/spiderfarmer_ggs_1_fan_natural_wind/config" not in topics
 
 
 def test_publish_discovery_emits_light_extras(mocker):
@@ -321,45 +326,42 @@ def test_publish_discovery_emits_fan_env_submode_dropdown(mocker):
     ]
 
 
-def test_fan_env_sub_device_includes_speeds_and_natural_wind(mocker):
+def test_fan_env_card_includes_speed_settings(mocker):
     client = mocker.MagicMock()
     publish_discovery_for_device(client, "ggs_1", CFG)
     pubs = _publish_calls(client)
 
-    # Min/Max speed aliased into Env card — same wire topics, distinct uids.
+    # Speed / Standby Speed / Oscillation / Natural Wind aliased under env
     speed_env = pubs["homeassistant/number/spiderfarmer_ggs_1_fan_schedule_speed_env/config"]
-    speed_main = pubs["homeassistant/number/spiderfarmer_ggs_1_fan_schedule_speed/config"]
-    assert speed_env["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_env"]
-    assert speed_env["state_topic"] == speed_main["state_topic"]
-    assert speed_env["command_topic"] == speed_main["command_topic"]
-    assert speed_env["unique_id"] != speed_main["unique_id"]
-
     standby_env = pubs["homeassistant/number/spiderfarmer_ggs_1_fan_standby_speed_env/config"]
-    assert standby_env["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_env"]
-
+    osc_env = pubs["homeassistant/number/spiderfarmer_ggs_1_fan_oscillation_level_env/config"]
     nw_env = pubs["homeassistant/switch/spiderfarmer_ggs_1_fan_natural_wind_env/config"]
-    assert nw_env["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_env"]
+    for p in (speed_env, standby_env, osc_env, nw_env):
+        assert p["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_env"]
 
 
 def test_blower_gets_full_app_parity_minus_oscillation_and_natural_wind(mocker):
-    # Blower (Fan Exhaust) is the same set of cards as the Fan Circulation,
-    # just with speed range 1-100 and without the oscillation_level /
-    # natural_wind entities (the exhaust fan has no shaking head and no
+    # Blower (Fan Exhaust) has the same three mode cards as Fan Circulation,
+    # just with speed range 1-100 and without oscillation_level /
+    # natural_wind (the exhaust fan has no shaking head and no
     # natural-wind feature).
     client = mocker.MagicMock()
     publish_discovery_for_device(client, "ggs_1", CFG)
     pubs = _publish_calls(client)
     topics = set(pubs)
 
-    # Same four sub-devices as fan
-    for slug in ("schedule", "cycle", "env", "speeds"):
+    # Same three mode sub-devices as fan (no Speeds card anymore)
+    for slug in ("schedule", "cycle", "env"):
         assert any(f"blower_{slug}" in str(p["device"]["identifiers"])
                    for p in pubs.values()), f"missing sub-device blower_{slug}"
+    # And the Speeds card is gone
+    for p in pubs.values():
+        assert p["device"]["identifiers"] != ["spiderfarmer_ggs_1_blower_speeds"]
 
-    # Speed entities exist with 1-100 range
-    sp = pubs["homeassistant/number/spiderfarmer_ggs_1_blower_schedule_speed/config"]
+    # Speed entities aliased into env card with 1-100 range
+    sp = pubs["homeassistant/number/spiderfarmer_ggs_1_blower_schedule_speed_env/config"]
     assert sp["min"] == 1 and sp["max"] == 100
-    sb = pubs["homeassistant/number/spiderfarmer_ggs_1_blower_standby_speed/config"]
+    sb = pubs["homeassistant/number/spiderfarmer_ggs_1_blower_standby_speed_env/config"]
     assert sb["min"] == 0 and sb["max"] == 100
 
     # Env-mode submode dropdown
@@ -371,56 +373,42 @@ def test_blower_gets_full_app_parity_minus_oscillation_and_natural_wind(mocker):
         assert "blower_natural_wind" not in t, t
 
 
-def test_standby_speed_appears_in_every_fan_card(mocker):
-    # Standby Speed (= controller's minSpeed) is what the fan runs at when
-    # conditions are at target. It applies in every mode, so the user wants
-    # it visible under each of the four cards. Same wire topics, distinct
-    # unique_ids so toggling one keeps the others in sync.
+def test_speed_settings_aliased_into_every_fan_mode_card(mocker):
+    # Speed / Standby Speed / Oscillation / Natural Wind apply across every
+    # mode, so the user wants them aliased under each of the three mode
+    # cards. Same wire topics, distinct unique_ids per alias.
     client = mocker.MagicMock()
     publish_discovery_for_device(client, "ggs_1", CFG)
     pubs = _publish_calls(client)
 
-    main = pubs["homeassistant/number/spiderfarmer_ggs_1_fan_standby_speed/config"]
-    sched = pubs["homeassistant/number/spiderfarmer_ggs_1_fan_standby_speed_schedule/config"]
-    cycle = pubs["homeassistant/number/spiderfarmer_ggs_1_fan_standby_speed_cycle/config"]
-    env = pubs["homeassistant/number/spiderfarmer_ggs_1_fan_standby_speed_env/config"]
+    for field, domain in [("schedule_speed", "number"),
+                          ("standby_speed", "number"),
+                          ("oscillation_level", "number"),
+                          ("natural_wind", "switch")]:
+        wire_state = f"spiderfarmer/ggs_1/state/fan/{field}"
+        wire_command = f"spiderfarmer/ggs_1/command/fan/{field}/set"
+        uids = set()
+        for alias in ("schedule", "cycle", "env"):
+            topic = f"homeassistant/{domain}/spiderfarmer_ggs_1_fan_{field}_{alias}/config"
+            assert topic in pubs, f"missing alias {topic}"
+            p = pubs[topic]
+            assert p["state_topic"] == wire_state
+            assert p["command_topic"] == wire_command
+            assert p["device"]["identifiers"] == [f"spiderfarmer_ggs_1_fan_{alias}"]
+            uids.add(p["unique_id"])
+        assert len(uids) == 3  # all three aliases have distinct unique_ids
 
-    # All four point at the same wire topics
-    for alias in (sched, cycle, env):
-        assert alias["state_topic"] == main["state_topic"]
-        assert alias["command_topic"] == main["command_topic"]
-        assert alias["unique_id"] != main["unique_id"]
 
-    # And land in the right sub-devices
-    assert sched["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_schedule"]
-    assert cycle["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_cycle"]
-    assert env["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_env"]
-    assert main["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_speeds"]
-
-
-def test_natural_wind_appears_in_schedule_cycle_env_and_speeds(mocker):
-    # User wants natural_wind in every fan settings card. All four entities
-    # share state/command topics so toggling one updates all.
+def test_speeds_sub_device_no_longer_exists(mocker):
+    # Speeds was a fourth card holding the catch-all settings (Speed,
+    # Oscillation, Natural Wind). Removed in favor of aliasing those
+    # entities into each mode card.
     client = mocker.MagicMock()
     publish_discovery_for_device(client, "ggs_1", CFG)
     pubs = _publish_calls(client)
-
-    nw_speeds = pubs["homeassistant/switch/spiderfarmer_ggs_1_fan_natural_wind/config"]
-    nw_sched = pubs["homeassistant/switch/spiderfarmer_ggs_1_fan_natural_wind_schedule/config"]
-    nw_cycle = pubs["homeassistant/switch/spiderfarmer_ggs_1_fan_natural_wind_cycle/config"]
-    nw_env = pubs["homeassistant/switch/spiderfarmer_ggs_1_fan_natural_wind_env/config"]
-
-    # All four point at the same wire topics
-    for alias in (nw_sched, nw_cycle, nw_env):
-        assert alias["state_topic"] == nw_speeds["state_topic"]
-        assert alias["command_topic"] == nw_speeds["command_topic"]
-        assert alias["unique_id"] != nw_speeds["unique_id"]
-
-    # And land in the right sub-devices
-    assert nw_sched["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_schedule"]
-    assert nw_cycle["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_cycle"]
-    assert nw_env["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_env"]
-    assert nw_speeds["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_speeds"]
+    for p in pubs.values():
+        assert p["device"]["identifiers"] != ["spiderfarmer_ggs_1_fan_speeds"]
+        assert p["device"]["identifiers"] != ["spiderfarmer_ggs_1_blower_speeds"]
 
 
 def test_fan_extras_grouped_into_sub_devices(mocker):
@@ -443,12 +431,11 @@ def test_fan_extras_grouped_into_sub_devices(mocker):
     ct = pubs["homeassistant/number/spiderfarmer_ggs_1_fan_cycle_times/config"]
     assert ct["max"] == 100
 
-    # Speed fields → Speeds sub-device
-    sp = pubs["homeassistant/number/spiderfarmer_ggs_1_fan_schedule_speed/config"]
-    assert sp["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_speeds"]
+    # Speed entities live aliased under each mode card now (no Speeds card)
+    sp = pubs["homeassistant/number/spiderfarmer_ggs_1_fan_schedule_speed_schedule/config"]
+    assert sp["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_schedule"]
     assert sp["min"] == 1 and sp["max"] == 10
 
-    # Natural wind lives on the Speeds sub-device — same group as the
-    # other "applies across all modes" fan settings.
-    nw = pubs["homeassistant/switch/spiderfarmer_ggs_1_fan_natural_wind/config"]
-    assert nw["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_speeds"]
+    # Natural wind aliased into Schedule card too
+    nw = pubs["homeassistant/switch/spiderfarmer_ggs_1_fan_natural_wind_schedule/config"]
+    assert nw["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_schedule"]

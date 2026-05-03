@@ -343,19 +343,20 @@ def _fan_extras(device_id: str, module: str, friendly: str, cfg: dict,
                 speed_max: int = 10, oscillation: bool = True,
                 natural_wind: bool = True) -> list:
     """Sub-device entities mirroring the SF App's Lüfter-Einstellungen screen
-    for one fan/blower. Four sub-devices linked via via_device:
-      - Schedule Mode: schedule_start, schedule_end [+ aliased natural_wind]
-      - Cycle Mode: cycle_start, cycle_run, cycle_off, cycle_times
-        [+ aliased natural_wind]
-      - Environment Mode: submode dropdown (5 env variants) + min/max speed
-        [+ aliased natural_wind]. Mirrors the SF App's Umweltmodus tab.
-      - Speeds: schedule_speed, standby_speed [+ oscillation_level]
-        [+ natural_wind].
+    for one fan/blower. Three sub-devices linked via via_device:
+      - Schedule Mode: schedule_start, schedule_end + Speed, Standby Speed
+        [+ Oscillation] [+ Natural Wind]
+      - Cycle Mode: cycle_start, cycle_run, cycle_off, cycle_times +
+        Speed, Standby Speed [+ Oscillation] [+ Natural Wind]
+      - Environment Mode: submode dropdown (5 env variants) + Speed,
+        Standby Speed [+ Oscillation] [+ Natural Wind]
+    Speed / Standby Speed / Oscillation / Natural Wind apply across every
+    mode, so they are aliased under each card with distinct unique_ids
+    but shared wire topics — toggling any copy keeps the others in sync.
     `speed_max` parameterizes the speed range (10 for Fan Circulation,
-    100 for Fan Exhaust/blower). `oscillation=False` skips the
-    oscillation_level entity (blower has no shaking head). `natural_wind=
-    False` skips natural_wind across all four cards (blower has no
-    natural-wind feature either)."""
+    100 for Fan Exhaust/blower). `oscillation=False` skips Oscillation
+    (blower has no shaking head). `natural_wind=False` skips Natural Wind
+    (blower has no natural-wind feature either)."""
     parent_id = f"spiderfarmer_{device_id}"
     sched_dev = _settings_subdevice(parent_id, friendly, f"{module}_schedule",
                                     "Schedule Mode", "Schedule settings")
@@ -363,28 +364,38 @@ def _fan_extras(device_id: str, module: str, friendly: str, cfg: dict,
                                     "Cycle Mode", "Cycle settings")
     env_dev = _settings_subdevice(parent_id, friendly, f"{module}_env",
                                   "Environment Mode", "Environment settings")
-    speeds_dev = _settings_subdevice(parent_id, friendly, f"{module}_speeds",
-                                     "Speeds", "Speed settings")
     HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
 
-    out: list = [
+    def _shared_speed_settings(card_dev: dict, alias: str) -> list:
+        """Speed / Standby Speed / Oscillation / Natural Wind aliased under
+        each card. Distinct unique_ids per alias, shared wire topics."""
+        items = [
+            _number_path_aliased(device_id, module, "schedule_speed", alias,
+                                 "Speed", 1, speed_max, 1, cfg, device=card_dev),
+            _number_path_aliased(device_id, module, "standby_speed", alias,
+                                 "Standby Speed", 0, speed_max, 1, cfg,
+                                 device=card_dev),
+        ]
+        if oscillation:
+            items.append(
+                _number_path_aliased(device_id, module, "oscillation_level",
+                                     alias, "Oscillation", 0, 10, 1, cfg,
+                                     device=card_dev),
+            )
+        if natural_wind:
+            items.append(
+                _switch_path_aliased(device_id, module, "natural_wind", alias,
+                                     "Natural Wind", cfg, device=card_dev),
+            )
+        return items
+
+    return [
         # Schedule Mode
         _text_path(device_id, module, "schedule_start",
                    "Start Time", HHMM, cfg, device=sched_dev),
         _text_path(device_id, module, "schedule_end",
                    "End Time", HHMM, cfg, device=sched_dev),
-        # Standby Speed applies in every mode (minSpeed when conditions
-        # are at target / the fan is idle), so alias it under each card.
-        _number_path_aliased(device_id, module, "standby_speed", "schedule",
-                             "Standby Speed", 0, speed_max, 1, cfg,
-                             device=sched_dev),
-    ]
-    if natural_wind:
-        out.append(
-            _switch_path_aliased(device_id, module, "natural_wind", "schedule",
-                                 "Natural Wind", cfg, device=sched_dev),
-        )
-    out += [
+        *_shared_speed_settings(sched_dev, "schedule"),
         # Cycle Mode
         _text_path(device_id, module, "cycle_start",
                    "Start Time", HHMM, cfg, device=cycle_dev),
@@ -394,47 +405,12 @@ def _fan_extras(device_id: str, module: str, friendly: str, cfg: dict,
                      "Off Time", 0, 1440, 1, cfg, unit="min", device=cycle_dev),
         _number_path(device_id, module, "cycle_times",
                      "Cycles", 1, 100, 1, cfg, device=cycle_dev),
-        _number_path_aliased(device_id, module, "standby_speed", "cycle",
-                             "Standby Speed", 0, speed_max, 1, cfg,
-                             device=cycle_dev),
-    ]
-    if natural_wind:
-        out.append(
-            _switch_path_aliased(device_id, module, "natural_wind", "cycle",
-                                 "Natural Wind", cfg, device=cycle_dev),
-        )
-    out += [
+        *_shared_speed_settings(cycle_dev, "cycle"),
         # Environment Mode
         _select_path(device_id, module, "env_submode",
                      "Submode", _FAN_ENV_SUBMODES, cfg, device=env_dev),
-        _number_path_aliased(device_id, module, "schedule_speed", "env",
-                             "Speed", 1, speed_max, 1, cfg, device=env_dev),
-        _number_path_aliased(device_id, module, "standby_speed", "env",
-                             "Standby Speed", 0, speed_max, 1, cfg, device=env_dev),
+        *_shared_speed_settings(env_dev, "env"),
     ]
-    if natural_wind:
-        out.append(
-            _switch_path_aliased(device_id, module, "natural_wind", "env",
-                                 "Natural Wind", cfg, device=env_dev),
-        )
-    out += [
-        # Speeds (catch-all — applies across all modes)
-        _number_path(device_id, module, "schedule_speed",
-                     "Speed", 1, speed_max, 1, cfg, device=speeds_dev),
-        _number_path(device_id, module, "standby_speed",
-                     "Standby Speed", 0, speed_max, 1, cfg, device=speeds_dev),
-    ]
-    if oscillation:
-        out.append(
-            _number_path(device_id, module, "oscillation_level",
-                         "Oscillation", 0, 10, 1, cfg, device=speeds_dev),
-        )
-    if natural_wind:
-        out.append(
-            _switch_path(device_id, module, "natural_wind",
-                         "Natural Wind", cfg, device=speeds_dev),
-        )
-    return out
 
 
 def publish_discovery_for_device(
