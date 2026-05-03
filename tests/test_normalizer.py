@@ -168,3 +168,58 @@ def test_on_off_value_variants():
     for off_val in (0, False, "0", "false", "off", "OFF"):
         d = {"data": {"heater": {"mOnOff": off_val}}}
         assert normalize_status("ggs_1", d)["spiderfarmer/ggs_1/state/heater"] == "OFF"
+
+
+# ── Fan app-parity (extra fields) ───────────────────────────────────────────
+
+def test_fan_emits_mode_label_and_schedule_extras():
+    data = {"data": {"fan": {
+        "modeType": 1, "mOnOff": 1, "mLevel": 3,
+        "shakeLevel": 6, "natural": 1,
+        "minSpeed": 2, "maxSpeed": 5,
+        "timePeriod": [{"enabled": 1, "weekmask": 127,
+                        "startTime": 21600, "endTime": 72000}],
+        "cycleTime": {"weekmask": 127},
+    }}}
+    r = normalize_status("ggs_1", data)
+    assert r["spiderfarmer/ggs_1/state/fan/mode_label"] == "Schedule"
+    assert r["spiderfarmer/ggs_1/state/fan/schedule_speed"] == "5"
+    assert r["spiderfarmer/ggs_1/state/fan/standby_speed"] == "2"
+    assert r["spiderfarmer/ggs_1/state/fan/oscillation_level"] == "6"
+    assert r["spiderfarmer/ggs_1/state/fan/natural_wind"] == "ON"
+    assert r["spiderfarmer/ggs_1/state/fan/schedule_start"] == "06:00"
+    assert r["spiderfarmer/ggs_1/state/fan/schedule_end"] == "20:00"
+
+
+def test_fan_emits_cycle_extras():
+    data = {"data": {"fan": {
+        "modeType": 2, "mOnOff": 1,
+        "cycleTime": {"weekmask": 127, "startTime": 10800,
+                      "openDur": 600, "closeDur": 1200, "times": 5},
+    }}}
+    r = normalize_status("ggs_1", data)
+    assert r["spiderfarmer/ggs_1/state/fan/mode_label"] == "Cycle"
+    assert r["spiderfarmer/ggs_1/state/fan/cycle_start"] == "03:00"
+    assert r["spiderfarmer/ggs_1/state/fan/cycle_run_minutes"] == "10"
+    assert r["spiderfarmer/ggs_1/state/fan/cycle_off_minutes"] == "20"
+    assert r["spiderfarmer/ggs_1/state/fan/cycle_times"] == "5"
+
+
+def test_fan_environment_modetypes_map_to_labels():
+    for mt, expected in [(7, "Environment: Prioritize temperature"),
+                         (8, "Environment: Prioritize humidity"),
+                         (3, "Environment: Temperature only"),
+                         (4, "Environment: Humidity only"),
+                         (13, "Environment: Temperature & humidity")]:
+        data = {"data": {"fan": {"modeType": mt}}}
+        r = normalize_status("ggs_1", data)
+        assert r["spiderfarmer/ggs_1/state/fan/mode_label"] == expected
+
+
+def test_blower_also_gets_extras():
+    data = {"data": {"blower": {
+        "modeType": 1, "maxSpeed": 50, "minSpeed": 25,
+    }}}
+    r = normalize_status("ggs_1", data)
+    assert r["spiderfarmer/ggs_1/state/blower/mode_label"] == "Schedule"
+    assert r["spiderfarmer/ggs_1/state/blower/schedule_speed"] == "50"

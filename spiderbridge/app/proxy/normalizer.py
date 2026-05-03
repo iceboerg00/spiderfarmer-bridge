@@ -13,9 +13,80 @@ _SENSOR_FIELD_MAP = [
     ("ECSoil", "ec_soil"),
 ]
 
+# modeType values for the fan block — confirmed from cloud setConfigField
+# captures while clicking through every mode in the SF App. The five Umwelt-
+# variants share modeType space with Manuell/Zeitfenster/Zyklus rather than
+# living in a separate Betriebsmodus field.
+_FAN_MODES = {
+    0: "Manual",
+    1: "Schedule",
+    2: "Cycle",
+    3: "Environment: Temperature only",
+    4: "Environment: Humidity only",
+    7: "Environment: Prioritize temperature",
+    8: "Environment: Prioritize humidity",
+    13: "Environment: Temperature & humidity",
+}
+
 
 def _on_off(val) -> str:
     return "ON" if val in (1, True, "1", "true", "on") else "OFF"
+
+
+def _seconds_to_hhmm(seconds) -> str:
+    try:
+        s = int(seconds) % 86400
+    except (TypeError, ValueError):
+        return "00:00"
+    return f"{s // 3600:02d}:{(s % 3600) // 60:02d}"
+
+
+def fan_extras_topics(device_id: str, prefix: str, block: Dict[str, Any]) -> Dict[str, str]:
+    """Per-field state topics for a fan/blower block. Used by normalize_status
+    when getDevSta arrives and by relay_down after observing a cloud
+    setConfigField, so the new HA entities (preset_mode, schedule, cycle,
+    speeds) get populated immediately."""
+    out: Dict[str, str] = {}
+    if not isinstance(block, dict):
+        return out
+    base = f"spiderfarmer/{device_id}/state/{prefix}"
+    if "modeType" in block:
+        mt = block["modeType"]
+        out[f"{base}/mode_label"] = _FAN_MODES.get(mt, str(mt))
+    if "maxSpeed" in block:
+        out[f"{base}/schedule_speed"] = str(block["maxSpeed"])
+    if "minSpeed" in block:
+        out[f"{base}/standby_speed"] = str(block["minSpeed"])
+    if "shakeLevel" in block:
+        out[f"{base}/oscillation_level"] = str(block["shakeLevel"])
+    if "natural" in block:
+        out[f"{base}/natural_wind"] = _on_off(block["natural"])
+    # Schedule-Modus (Zeitfenster) — timePeriod[0]
+    periods = block.get("timePeriod") or []
+    if isinstance(periods, list) and periods:
+        tp = periods[0] if isinstance(periods[0], dict) else {}
+        if "startTime" in tp:
+            out[f"{base}/schedule_start"] = _seconds_to_hhmm(tp["startTime"])
+        if "endTime" in tp:
+            out[f"{base}/schedule_end"] = _seconds_to_hhmm(tp["endTime"])
+    # Zyklusmodus
+    ct = block.get("cycleTime")
+    if isinstance(ct, dict):
+        if "startTime" in ct:
+            out[f"{base}/cycle_start"] = _seconds_to_hhmm(ct["startTime"])
+        if "openDur" in ct:
+            try:
+                out[f"{base}/cycle_run_minutes"] = str(int(ct["openDur"]) // 60)
+            except (TypeError, ValueError):
+                pass
+        if "closeDur" in ct:
+            try:
+                out[f"{base}/cycle_off_minutes"] = str(int(ct["closeDur"]) // 60)
+            except (TypeError, ValueError):
+                pass
+        if "times" in ct:
+            out[f"{base}/cycle_times"] = str(ct["times"])
+    return out
 
 
 def normalize_status(device_id: str, data: Dict[str, Any]) -> Dict[str, str]:
@@ -72,6 +143,7 @@ def normalize_status(device_id: str, data: Dict[str, Any]) -> Dict[str, str]:
             "state": _on_off(blower.get("on", blower.get("mOnOff", 0))),
             "percentage": blower.get("level", blower.get("mLevel", 0)),
         })
+        result.update(fan_extras_topics(device_id, "blower", blower))
 
     # ── Fan (JSON state + oscillation) ────────────────────────────────────────
     fan = d.get("fan", {})
@@ -80,6 +152,7 @@ def normalize_status(device_id: str, data: Dict[str, Any]) -> Dict[str, str]:
             "state": _on_off(fan.get("on", fan.get("mOnOff", 0))),
             "percentage": fan.get("level", fan.get("mLevel", 0)),
         })
+        result.update(fan_extras_topics(device_id, "fan", fan))
 
     # ── Accessories ───────────────────────────────────────────────────────────
     for module in ("heater", "humidifier", "dehumidifier"):

@@ -225,3 +225,101 @@ def test_payload_includes_pid_uid_and_msg_id():
     # msgId is a string of millisecond timestamp
     assert isinstance(r["msgId"], str)
     assert int(r["msgId"]) > 0
+
+
+# ── Fan app-parity (preset_mode + subfield writes) ──────────────────────────
+
+def test_fan_preset_mode_maps_label_to_modeType():
+    cached = {"fan": {"modeType": 0, "mOnOff": 1, "mLevel": 3,
+                      "shakeLevel": 0, "natural": 0,
+                      "timePeriod": [{"weekmask": 127}],
+                      "cycleTime": {"weekmask": 127}}}
+    r = translate_command("fan", "Environment: Prioritize temperature",
+                          "AABBCC", "uid1",
+                          subfield="preset_mode", fan_state=cached)
+    assert r["params"]["fan"]["modeType"] == 7
+    # other fields preserved
+    assert r["params"]["fan"]["mLevel"] == 3
+    assert r["params"]["fan"]["shakeLevel"] == 0
+
+
+def test_fan_preset_mode_unknown_label_returns_none():
+    r = translate_command("fan", "Bogus Mode", "AABBCC", "uid1",
+                          subfield="preset_mode", fan_state={})
+    assert r is None
+
+
+def test_fan_schedule_start_parses_hhmm():
+    r = translate_command("fan", "07:30", "AABBCC", "uid1",
+                          subfield="schedule_start", fan_state={})
+    assert r["params"]["fan"]["timePeriod"][0]["startTime"] == 7 * 3600 + 30 * 60
+
+
+def test_fan_cycle_run_minutes_to_seconds():
+    r = translate_command("fan", "10", "AABBCC", "uid1",
+                          subfield="cycle_run_minutes", fan_state={})
+    assert r["params"]["fan"]["cycleTime"]["openDur"] == 600
+
+
+def test_fan_cycle_times_clamped_to_100():
+    r = translate_command("fan", "9999", "AABBCC", "uid1",
+                          subfield="cycle_times", fan_state={})
+    assert r["params"]["fan"]["cycleTime"]["times"] == 100
+
+
+def test_fan_schedule_speed_clamped_to_10():
+    r = translate_command("fan", "15", "AABBCC", "uid1",
+                          subfield="schedule_speed", fan_state={})
+    assert r["params"]["fan"]["maxSpeed"] == 10
+
+
+def test_fan_standby_speed_zero_means_aus():
+    r = translate_command("fan", "0", "AABBCC", "uid1",
+                          subfield="standby_speed", fan_state={})
+    assert r["params"]["fan"]["minSpeed"] == 0
+
+
+def test_fan_oscillation_level_writes_shake_level():
+    r = translate_command("fan", "7", "AABBCC", "uid1",
+                          subfield="oscillation_level", fan_state={})
+    assert r["params"]["fan"]["shakeLevel"] == 7
+
+
+def test_fan_natural_wind_on_off():
+    on = translate_command("fan", "ON", "AABBCC", "uid1",
+                           subfield="natural_wind", fan_state={})
+    off = translate_command("fan", "OFF", "AABBCC", "uid1",
+                            subfield="natural_wind", fan_state={})
+    assert on["params"]["fan"]["natural"] == 1
+    assert off["params"]["fan"]["natural"] == 0
+
+
+def test_fan_subfield_targets_blower_keypath_when_field_is_blower():
+    r = translate_command("blower", "5", "AABBCC", "uid1",
+                          subfield="schedule_speed", fan_state={})
+    assert r["params"]["keyPath"] == ["device", "blower"]
+    assert "blower" in r["params"]
+    assert r["params"]["blower"]["maxSpeed"] == 5
+
+
+def test_fan_subfield_preserves_cached_block_other_fields():
+    cached = {"fan": {
+        "modeType": 2, "mOnOff": 1, "mLevel": 3,
+        "shakeLevel": 6, "natural": 1,
+        "minSpeed": 1, "maxSpeed": 5,
+        "timePeriod": [{"enabled": 1, "weekmask": 127,
+                        "startTime": 3600, "endTime": 7200}],
+        "cycleTime": {"weekmask": 127, "startTime": 10800,
+                      "openDur": 600, "closeDur": 1200, "times": 5},
+    }}
+    r = translate_command("fan", "20", "AABBCC", "uid1",
+                          subfield="cycle_run_minutes", fan_state=cached)
+    out = r["params"]["fan"]
+    # Changed
+    assert out["cycleTime"]["openDur"] == 1200
+    # Untouched
+    assert out["cycleTime"]["closeDur"] == 1200
+    assert out["cycleTime"]["times"] == 5
+    assert out["modeType"] == 2
+    assert out["maxSpeed"] == 5
+    assert out["natural"] == 1

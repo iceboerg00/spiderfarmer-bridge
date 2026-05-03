@@ -11,7 +11,7 @@ from .mqtt_parser import (
     parse_packets, build_publish,
     MQTT_PUBLISH, MQTT_CONNECT, MQTT_SUBSCRIBE,
 )
-from .normalizer import normalize_status
+from .normalizer import normalize_status, fan_extras_topics
 from ha.discovery import (
     publish_soil_sensor_discovery as _publish_soil_sensor_discovery,
     unpublish_outlet_discovery as _unpublish_outlet_discovery,
@@ -49,6 +49,11 @@ class ProxySession:
         # Static discovery publishes outlets 1..10 unconditionally; once the
         # controller reports its actual outlet set we unpublish the rest.
         self._outlet_discovery_pruned: bool = False
+        # Full last-known fan/blower blocks for app-parity write paths.
+        # getDevSta carries only minimal state ({on, level}); cloud
+        # setConfigField traffic carries the schedule/cycle/speeds we
+        # need to merge against on HA writes.
+        self.fan_state: Dict[str, dict] = {}
 
     def set_upstream(self, writer: asyncio.StreamWriter) -> None:
         self._upstream_writer = writer
@@ -172,9 +177,20 @@ class MITMProxy:
 
         payload = translate_command(field, value, session.mac, session.uid, outlet_num,
                                     device_state=session.device_state, subfield=subfield,
-                                    last_nonzero_level=session.last_nonzero_level)
+                                    last_nonzero_level=session.last_nonzero_level,
+                                    fan_state=session.fan_state)
         if payload:
             await session.inject(payload)
+            # Optimistic update: write the fan/blower fields to the cache and
+            # publish per-field state topics so the new HA entities reflect
+            # the change without waiting for the next observed cloud echo.
+            params = payload.get("params", {})
+            for k in ("fan", "blower"):
+                blk = params.get(k)
+                if isinstance(blk, dict):
+                    session.fan_state[k] = blk
+                    for tpc, val in fan_extras_topics(session.device_id, k, blk).items():
+                        self.mqtt_client.publish(tpc, val, retain=True)
 
     async def handle_client(
         self,
@@ -337,6 +353,14 @@ class MITMProxy:
                                             keypath,
                                             json.dumps(params, separators=(',', ':')),
                                         )
+                                        sess = nonlocal_session[0]
+                                        if sess is not None:
+                                            for k in ("fan", "blower"):
+                                                if k in keypath and isinstance(params.get(k), dict):
+                                                    sess.fan_state[k] = params[k]
+                                                    for tpc, val in fan_extras_topics(
+                                                            sess.device_id, k, params[k]).items():
+                                                        self.mqtt_client.publish(tpc, val, retain=True)
                         except Exception as e:
                             # Never let logging break the relay
                             logger.debug("relay_down parse error (non-fatal): %s", e)

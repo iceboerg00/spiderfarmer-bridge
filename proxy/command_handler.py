@@ -7,9 +7,34 @@ logger = logging.getLogger(__name__)
 
 _TIME_PERIOD = [{"weekmask": 127}]
 
+# Reverse mapping of the fan modeType labels surfaced as preset_modes in HA.
+# Order here matches the SF App dropdown so the HA UI lists modes in the
+# same order the user sees in the App.
+_FAN_MODE_TO_TYPE = {
+    "Manual": 0,
+    "Schedule": 1,
+    "Cycle": 2,
+    "Environment: Prioritize temperature": 7,
+    "Environment: Prioritize humidity": 8,
+    "Environment: Temperature only": 3,
+    "Environment: Humidity only": 4,
+    "Environment: Temperature & humidity": 13,
+}
+
 
 def _onoff(v) -> int:
     return 1 if str(v).upper() in ("ON", "1", "TRUE") else 0
+
+
+def _hhmm_to_seconds(s) -> int:
+    """Parse 'HH:MM' to seconds since midnight; 0 on parse error."""
+    try:
+        parts = str(s).split(":")
+        h = int(parts[0])
+        m = int(parts[1]) if len(parts) > 1 else 0
+        return (h * 3600 + m * 60) % 86400
+    except (ValueError, IndexError):
+        return 0
 
 
 def _build(mac: str, uid: str, domain: str, module: str, obj: dict) -> dict:
@@ -31,9 +56,11 @@ def translate_command(
     device_state: Optional[dict] = None,
     subfield: Optional[str] = None,
     last_nonzero_level: Optional[dict] = None,
+    fan_state: Optional[dict] = None,
 ) -> Optional[dict]:
     state = device_state or {}
     last_levels = last_nonzero_level or {}
+    fans = fan_state or {}
 
     # ── Outlet ────────────────────────────────────────────────────────────────
     # Minimal payload — the controller already has the schedule/watering
@@ -74,6 +101,98 @@ def translate_command(
             "mLevel": level,
             "timePeriod": cur.get("timePeriod", _TIME_PERIOD),
         })
+
+    # ── Fan / Blower — app-parity subfield writes ───────────────────────────
+    # New HA entities (preset_mode, schedule_*, cycle_*, schedule_speed,
+    # standby_speed, oscillation_level, natural_wind) each map to one field
+    # on the controller's fan/blower block. Merge the subfield into a copy
+    # of the cached block so the rest of the controller's settings stay
+    # intact. When the cache is empty, synthesize a sensible default block
+    # so the controller does not silently reject the partial command.
+    _FAN_SUBFIELDS = {
+        "preset_mode", "schedule_start", "schedule_end",
+        "schedule_speed", "standby_speed",
+        "cycle_start", "cycle_run_minutes", "cycle_off_minutes", "cycle_times",
+        "oscillation_level", "natural_wind",
+    }
+    if field in ("fan", "blower") and subfield in _FAN_SUBFIELDS:
+        cached = fans.get(field)
+        if cached:
+            block = dict(cached)
+        else:
+            cur = state.get(field, {})
+            block = {
+                "modeType": cur.get("modeType", 0),
+                "mOnOff": int(cur.get("on", cur.get("mOnOff", 0))),
+                "mLevel": int(cur.get("level", cur.get("mLevel", 1))),
+                "shakeLevel": int(cur.get("shakeLevel", 0)),
+                "natural": 0,
+                "minSpeed": 0,
+                "maxSpeed": 1,
+                "timePeriod": [{"enabled": 1, "weekmask": 127, "startTime": 0, "endTime": 0}],
+                "cycleTime": {"weekmask": 127, "startTime": 0, "openDur": 0, "closeDur": 0, "times": 1},
+            }
+            logger.info(
+                "[%s] Fan cache empty — using synthesized defaults for %s/%s",
+                field, field, subfield,
+            )
+
+        if subfield == "preset_mode":
+            mt = _FAN_MODE_TO_TYPE.get(value)
+            if mt is None:
+                logger.warning("Unknown fan preset_mode: %s", value)
+                return None
+            block["modeType"] = mt
+        elif subfield == "schedule_start":
+            tp = block.setdefault("timePeriod", [{}])
+            if not tp:
+                tp.append({})
+            tp[0]["startTime"] = _hhmm_to_seconds(value)
+        elif subfield == "schedule_end":
+            tp = block.setdefault("timePeriod", [{}])
+            if not tp:
+                tp.append({})
+            tp[0]["endTime"] = _hhmm_to_seconds(value)
+        elif subfield == "schedule_speed":
+            try:
+                block["maxSpeed"] = max(1, min(10, int(float(value))))
+            except (ValueError, TypeError):
+                return None
+        elif subfield == "standby_speed":
+            try:
+                block["minSpeed"] = max(0, min(10, int(float(value))))
+            except (ValueError, TypeError):
+                return None
+        elif subfield == "cycle_start":
+            ct = block.setdefault("cycleTime", {"weekmask": 127})
+            ct["startTime"] = _hhmm_to_seconds(value)
+        elif subfield == "cycle_run_minutes":
+            ct = block.setdefault("cycleTime", {"weekmask": 127})
+            try:
+                ct["openDur"] = max(0, int(float(value))) * 60
+            except (ValueError, TypeError):
+                return None
+        elif subfield == "cycle_off_minutes":
+            ct = block.setdefault("cycleTime", {"weekmask": 127})
+            try:
+                ct["closeDur"] = max(0, int(float(value))) * 60
+            except (ValueError, TypeError):
+                return None
+        elif subfield == "cycle_times":
+            ct = block.setdefault("cycleTime", {"weekmask": 127})
+            try:
+                # Controller hard-caps at 100 regardless of cycle duration.
+                ct["times"] = max(1, min(100, int(float(value))))
+            except (ValueError, TypeError):
+                return None
+        elif subfield == "oscillation_level":
+            try:
+                block["shakeLevel"] = max(0, min(10, int(float(value))))
+            except (ValueError, TypeError):
+                return None
+        elif subfield == "natural_wind":
+            block["natural"] = _onoff(value)
+        return _build(mac, uid, "device", field, block)
 
     # ── Blower on/off ─────────────────────────────────────────────────────────
     if field == "blower" and subfield is None:
