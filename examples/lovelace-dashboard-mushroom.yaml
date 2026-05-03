@@ -1,0 +1,483 @@
+# Spider Farmer GGS — Mushroom Dashboard
+#
+# Polished variant of examples/lovelace-dashboard.yaml using the
+# Mushroom card library. Active mode is highlighted as a colored chip;
+# clicking another chip switches the mode and swaps the settings card.
+#
+# ─────────────────────────────────────────────────────────────────────────
+#  Setup
+# ─────────────────────────────────────────────────────────────────────────
+#  1. Install HACS if you haven't yet:
+#     https://hacs.xyz/docs/setup/download
+#
+#  2. In HACS → Frontend → search for and install:
+#       - Mushroom        (https://github.com/piitaya/lovelace-mushroom)
+#
+#  3. HA → Settings → Dashboards → "+ ADD DASHBOARD" → Empty.
+#     Open it → ⋮ → "Edit Dashboard" → ⋮ → "Raw Configuration Editor".
+#     Paste everything below the line. Save.
+#
+#  Entity IDs assume the device's friendly_name = "GGS" (default from
+#  setup/wizard.sh). If yours differs, find/replace `ggs_` with yours.
+#
+# ─────────────────────────────────────────────────────────────────────────
+
+title: Spider Farmer
+views:
+
+  # ── Light 1 ───────────────────────────────────────────────────────────────
+  - title: Light
+    icon: mdi:lightbulb
+    cards:
+
+      - type: vertical-stack
+        cards:
+          - type: custom:mushroom-light-card
+            entity: light.ggs_light_1
+            name: Light 1
+            show_brightness_control: true
+            collapsible_controls: false
+
+          # Mode picker as chips — the active mode is colored, the
+          # others are dimmed. Clicking a chip calls light.turn_on with
+          # the matching effect, and the conditional cards below swap.
+          - type: custom:mushroom-chips-card
+            alignment: justify
+            chips:
+              - type: template
+                content: Manual
+                icon: mdi:hand-back-right
+                icon_color: >-
+                  {{ 'orange' if state_attr('light.ggs_light_1', 'effect')
+                     == 'Manual' else 'disabled' }}
+                tap_action:
+                  action: call-service
+                  service: light.turn_on
+                  target:
+                    entity_id: light.ggs_light_1
+                  data:
+                    effect: Manual
+              - type: template
+                content: Schedule
+                icon: mdi:calendar-clock
+                icon_color: >-
+                  {{ 'orange' if state_attr('light.ggs_light_1', 'effect')
+                     == 'Schedule' else 'disabled' }}
+                tap_action:
+                  action: call-service
+                  service: light.turn_on
+                  target:
+                    entity_id: light.ggs_light_1
+                  data:
+                    effect: Schedule
+              - type: template
+                content: PPFD
+                icon: mdi:white-balance-sunny
+                icon_color: >-
+                  {{ 'orange' if state_attr('light.ggs_light_1', 'effect')
+                     == 'PPFD' else 'disabled' }}
+                tap_action:
+                  action: call-service
+                  service: light.turn_on
+                  target:
+                    entity_id: light.ggs_light_1
+                  data:
+                    effect: PPFD
+
+          # Schedule Mode — only visible when light effect is "Schedule"
+          - type: conditional
+            conditions:
+              - entity: light.ggs_light_1
+                attribute: effect
+                state: Schedule
+            card:
+              type: entities
+              title: Schedule Mode
+              icon: mdi:calendar-clock
+              entities:
+                - entity: number.ggs_light_1_schedule_mode_brightness
+                  name: Brightness
+                - entity: text.ggs_light_1_schedule_mode_start_time
+                  name: Start Time
+                - entity: text.ggs_light_1_schedule_mode_end_time
+                  name: End Time
+                - entity: number.ggs_light_1_schedule_mode_fade_time
+                  name: Fade Time
+
+          # PPFD Mode — only visible when light effect is "PPFD"
+          - type: conditional
+            conditions:
+              - entity: light.ggs_light_1
+                attribute: effect
+                state: PPFD
+            card:
+              type: entities
+              title: PPFD Mode
+              icon: mdi:white-balance-sunny
+              entities:
+                - entity: number.ggs_light_1_ppfd_mode_target_ppfd
+                  name: Target PPFD
+                - entity: text.ggs_light_1_ppfd_mode_start_time
+                  name: Start Time
+                - entity: text.ggs_light_1_ppfd_mode_end_time
+                  name: End Time
+                - entity: number.ggs_light_1_ppfd_mode_fade_time
+                  name: Fade Time
+                - entity: number.ggs_light_1_ppfd_mode_min_brightness
+                  name: Min Brightness
+                - entity: number.ggs_light_1_ppfd_mode_max_brightness
+                  name: Max Brightness
+
+          # Temperature Protection — applies in every mode, always visible
+          - type: entities
+            title: Temperature Protection
+            icon: mdi:thermometer-alert
+            entities:
+              - entity: number.ggs_light_1_schedule_mode_dim_threshold
+                name: Dim Threshold
+              - entity: number.ggs_light_1_schedule_mode_off_threshold
+                name: Off Threshold
+
+      - type: custom:mushroom-light-card
+        entity: light.ggs_light_2
+        name: Light 2
+        show_brightness_control: true
+        collapsible_controls: false
+
+  # ── Fan Circulation ───────────────────────────────────────────────────────
+  - title: Fan Circulation
+    icon: mdi:fan
+    cards:
+
+      - type: vertical-stack
+        cards:
+          - type: custom:mushroom-fan-card
+            entity: fan.ggs_fan_circulation
+            name: Fan Circulation
+            show_percentage_control: true
+            show_oscillate_control: false
+            collapsible_controls: false
+
+          # Mode picker — 8 fan presets. With many modes chips wrap,
+          # which is fine. Active one is highlighted.
+          - type: custom:mushroom-chips-card
+            alignment: start
+            chips:
+              - type: template
+                content: Manual
+                icon: mdi:hand-back-right
+                icon_color: >-
+                  {{ 'green' if state_attr('fan.ggs_fan_circulation',
+                     'preset_mode') == 'Manual' else 'disabled' }}
+                tap_action:
+                  action: call-service
+                  service: fan.set_preset_mode
+                  target:
+                    entity_id: fan.ggs_fan_circulation
+                  data:
+                    preset_mode: Manual
+              - type: template
+                content: Schedule
+                icon: mdi:calendar-clock
+                icon_color: >-
+                  {{ 'green' if state_attr('fan.ggs_fan_circulation',
+                     'preset_mode') == 'Schedule' else 'disabled' }}
+                tap_action:
+                  action: call-service
+                  service: fan.set_preset_mode
+                  target:
+                    entity_id: fan.ggs_fan_circulation
+                  data:
+                    preset_mode: Schedule
+              - type: template
+                content: Cycle
+                icon: mdi:repeat
+                icon_color: >-
+                  {{ 'green' if state_attr('fan.ggs_fan_circulation',
+                     'preset_mode') == 'Cycle' else 'disabled' }}
+                tap_action:
+                  action: call-service
+                  service: fan.set_preset_mode
+                  target:
+                    entity_id: fan.ggs_fan_circulation
+                  data:
+                    preset_mode: Cycle
+              - type: template
+                content: Env
+                icon: mdi:weather-partly-cloudy
+                icon_color: >-
+                  {% set m = state_attr('fan.ggs_fan_circulation',
+                     'preset_mode') %}
+                  {{ 'green' if m and m.startswith('Environment')
+                     else 'disabled' }}
+                tap_action:
+                  action: call-service
+                  service: fan.set_preset_mode
+                  target:
+                    entity_id: fan.ggs_fan_circulation
+                  data:
+                    preset_mode: "Environment: Prioritize temperature"
+
+          # Schedule Mode
+          - type: conditional
+            conditions:
+              - entity: fan.ggs_fan_circulation
+                attribute: preset_mode
+                state: Schedule
+            card:
+              type: entities
+              title: Schedule Mode
+              icon: mdi:calendar-clock
+              entities:
+                - entity: text.ggs_fan_schedule_mode_start_time
+                  name: Start Time
+                - entity: text.ggs_fan_schedule_mode_end_time
+                  name: End Time
+                - entity: number.ggs_fan_schedule_mode_speed
+                  name: Speed
+                - entity: number.ggs_fan_schedule_mode_standby_speed
+                  name: Standby Speed
+                - entity: number.ggs_fan_schedule_mode_oscillation
+                  name: Oscillation
+                - entity: switch.ggs_fan_schedule_mode_natural_wind
+                  name: Natural Wind
+
+          # Cycle Mode
+          - type: conditional
+            conditions:
+              - entity: fan.ggs_fan_circulation
+                attribute: preset_mode
+                state: Cycle
+            card:
+              type: entities
+              title: Cycle Mode
+              icon: mdi:repeat
+              entities:
+                - entity: text.ggs_fan_cycle_mode_start_time
+                  name: Start Time
+                - entity: number.ggs_fan_cycle_mode_run_time
+                  name: Run Time
+                - entity: number.ggs_fan_cycle_mode_off_time
+                  name: Off Time
+                - entity: number.ggs_fan_cycle_mode_cycles
+                  name: Cycles
+                - entity: number.ggs_fan_cycle_mode_speed
+                  name: Speed
+                - entity: number.ggs_fan_cycle_mode_standby_speed
+                  name: Standby Speed
+                - entity: number.ggs_fan_cycle_mode_oscillation
+                  name: Oscillation
+                - entity: switch.ggs_fan_cycle_mode_natural_wind
+                  name: Natural Wind
+
+          # Environment Mode — any of the 5 env variants. The Submode
+          # select inside the card lets the user pick the specific variant.
+          - type: conditional
+            conditions:
+              - entity: fan.ggs_fan_circulation
+                attribute: preset_mode
+                state:
+                  - "Environment: Prioritize temperature"
+                  - "Environment: Prioritize humidity"
+                  - "Environment: Temperature only"
+                  - "Environment: Humidity only"
+                  - "Environment: Temperature & humidity"
+            card:
+              type: entities
+              title: Environment Mode
+              icon: mdi:weather-partly-cloudy
+              entities:
+                - entity: select.ggs_fan_environment_mode_submode
+                  name: Submode
+                - entity: number.ggs_fan_environment_mode_speed
+                  name: Speed
+                - entity: number.ggs_fan_environment_mode_standby_speed
+                  name: Standby Speed
+                - entity: number.ggs_fan_environment_mode_oscillation
+                  name: Oscillation
+                - entity: switch.ggs_fan_environment_mode_natural_wind
+                  name: Natural Wind
+
+  # ── Fan Exhaust ───────────────────────────────────────────────────────────
+  - title: Fan Exhaust
+    icon: mdi:fan-chevron-up
+    cards:
+
+      - type: vertical-stack
+        cards:
+          - type: custom:mushroom-fan-card
+            entity: fan.ggs_fan_exhaust
+            name: Fan Exhaust
+            show_percentage_control: true
+            collapsible_controls: false
+
+          # Mode picker chips — same 4 grouping as Fan Circulation
+          - type: custom:mushroom-chips-card
+            alignment: start
+            chips:
+              - type: template
+                content: Manual
+                icon: mdi:hand-back-right
+                icon_color: >-
+                  {{ 'green' if state_attr('fan.ggs_fan_exhaust',
+                     'preset_mode') == 'Manual' else 'disabled' }}
+                tap_action:
+                  action: call-service
+                  service: fan.set_preset_mode
+                  target:
+                    entity_id: fan.ggs_fan_exhaust
+                  data:
+                    preset_mode: Manual
+              - type: template
+                content: Schedule
+                icon: mdi:calendar-clock
+                icon_color: >-
+                  {{ 'green' if state_attr('fan.ggs_fan_exhaust',
+                     'preset_mode') == 'Schedule' else 'disabled' }}
+                tap_action:
+                  action: call-service
+                  service: fan.set_preset_mode
+                  target:
+                    entity_id: fan.ggs_fan_exhaust
+                  data:
+                    preset_mode: Schedule
+              - type: template
+                content: Cycle
+                icon: mdi:repeat
+                icon_color: >-
+                  {{ 'green' if state_attr('fan.ggs_fan_exhaust',
+                     'preset_mode') == 'Cycle' else 'disabled' }}
+                tap_action:
+                  action: call-service
+                  service: fan.set_preset_mode
+                  target:
+                    entity_id: fan.ggs_fan_exhaust
+                  data:
+                    preset_mode: Cycle
+              - type: template
+                content: Env
+                icon: mdi:weather-partly-cloudy
+                icon_color: >-
+                  {% set m = state_attr('fan.ggs_fan_exhaust',
+                     'preset_mode') %}
+                  {{ 'green' if m and m.startswith('Environment')
+                     else 'disabled' }}
+                tap_action:
+                  action: call-service
+                  service: fan.set_preset_mode
+                  target:
+                    entity_id: fan.ggs_fan_exhaust
+                  data:
+                    preset_mode: "Environment: Prioritize temperature"
+
+          # Schedule Mode
+          - type: conditional
+            conditions:
+              - entity: fan.ggs_fan_exhaust
+                attribute: preset_mode
+                state: Schedule
+            card:
+              type: entities
+              title: Schedule Mode
+              icon: mdi:calendar-clock
+              entities:
+                - entity: text.ggs_fan_exhaust_schedule_mode_start_time
+                  name: Start Time
+                - entity: text.ggs_fan_exhaust_schedule_mode_end_time
+                  name: End Time
+                - entity: number.ggs_fan_exhaust_schedule_mode_speed
+                  name: Speed
+                - entity: number.ggs_fan_exhaust_schedule_mode_standby_speed
+                  name: Standby Speed
+
+          # Cycle Mode
+          - type: conditional
+            conditions:
+              - entity: fan.ggs_fan_exhaust
+                attribute: preset_mode
+                state: Cycle
+            card:
+              type: entities
+              title: Cycle Mode
+              icon: mdi:repeat
+              entities:
+                - entity: text.ggs_fan_exhaust_cycle_mode_start_time
+                  name: Start Time
+                - entity: number.ggs_fan_exhaust_cycle_mode_run_time
+                  name: Run Time
+                - entity: number.ggs_fan_exhaust_cycle_mode_off_time
+                  name: Off Time
+                - entity: number.ggs_fan_exhaust_cycle_mode_cycles
+                  name: Cycles
+                - entity: number.ggs_fan_exhaust_cycle_mode_speed
+                  name: Speed
+                - entity: number.ggs_fan_exhaust_cycle_mode_standby_speed
+                  name: Standby Speed
+
+          # Environment Mode
+          - type: conditional
+            conditions:
+              - entity: fan.ggs_fan_exhaust
+                attribute: preset_mode
+                state:
+                  - "Environment: Prioritize temperature"
+                  - "Environment: Prioritize humidity"
+                  - "Environment: Temperature only"
+                  - "Environment: Humidity only"
+                  - "Environment: Temperature & humidity"
+            card:
+              type: entities
+              title: Environment Mode
+              icon: mdi:weather-partly-cloudy
+              entities:
+                - entity: select.ggs_fan_exhaust_environment_mode_submode
+                  name: Submode
+                - entity: number.ggs_fan_exhaust_environment_mode_speed
+                  name: Speed
+                - entity: number.ggs_fan_exhaust_environment_mode_standby_speed
+                  name: Standby Speed
+
+  # ── Overview ──────────────────────────────────────────────────────────────
+  - title: Overview
+    icon: mdi:home
+    cards:
+      - type: entities
+        title: Air
+        icon: mdi:weather-windy
+        entities:
+          - sensor.ggs_air_temperature
+          - sensor.ggs_air_humidity
+          - sensor.ggs_air_vpd
+          - sensor.ggs_air_co2
+          - sensor.ggs_air_ppfd
+
+      - type: entities
+        title: Soil (avg)
+        icon: mdi:sprout
+        entities:
+          - sensor.ggs_soil_avg_temperature
+          - sensor.ggs_soil_avg_humidity
+          - sensor.ggs_soil_avg_ec
+
+      - type: entities
+        title: Climate
+        icon: mdi:thermostat
+        entities:
+          - switch.ggs_switch_heater
+          - switch.ggs_switch_humidifier
+          - switch.ggs_switch_dehumidifier
+
+      - type: entities
+        title: Outlets
+        icon: mdi:power-socket-eu
+        entities:
+          - switch.ggs_outlet_1
+          - switch.ggs_outlet_2
+          - switch.ggs_outlet_3
+          - switch.ggs_outlet_4
+          - switch.ggs_outlet_5
+          - switch.ggs_outlet_6
+          - switch.ggs_outlet_7
+          - switch.ggs_outlet_8
+          - switch.ggs_outlet_9
+          - switch.ggs_outlet_10
