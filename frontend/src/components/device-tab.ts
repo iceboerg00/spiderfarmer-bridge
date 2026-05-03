@@ -256,13 +256,19 @@ export class DeviceTab extends LitElement {
     const name = this._state.attributes?.friendly_name ?? this.entity;
     const unit = '%';
     const displayLevel = this._draggingLevel ?? this._level;
+    // Light is smooth (0-100); fans have N speed levels mapped onto 0-100 %
+    // so the slider should snap to whole levels — step = 100 / speedMax.
+    // Fan Circulation (10 levels) → step 10, Fan Exhaust (100 levels) → step 1.
+    const sliderStep = this.deviceType === 'light'
+      ? 1
+      : Math.max(1, Math.round(100 / this.speedMax));
     return html`
       <div class="header">
         <div class="name">${name}</div>
         <div class="sub">${this._onOff} · ${this._currentMode}</div>
       </div>
       <div class="slider-row">
-        <input type="range" class="slider" min="0" max="100" step="1"
+        <input type="range" class="slider" min="0" max="100" step=${sliderStep}
           .value=${String(displayLevel)}
           style="--ggs-fill: ${displayLevel}"
           @input=${this._onSliderDrag}
