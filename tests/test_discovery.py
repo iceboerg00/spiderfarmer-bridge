@@ -1,6 +1,10 @@
 import json
 
-from ha.discovery import publish_discovery_for_device, publish_soil_sensor_discovery
+from ha.discovery import (
+    publish_discovery_for_device,
+    publish_soil_sensor_discovery,
+    unpublish_outlet_discovery,
+)
 
 CFG = {"friendly_name": "Test GGS"}
 
@@ -132,6 +136,20 @@ def test_publish_discovery_device_info_consistent(mocker):
         assert p["device"]["manufacturer"] == "Spider Farmer"
         assert p["device"]["model"] == "GGS Controller"
         assert p["device"]["name"] == "Test GGS"
+
+
+def test_unpublish_outlet_discovery_sends_empty_retained_payload(mocker):
+    # HA removes a discovered entity when an empty retained payload is
+    # published to its config topic. The proxy uses this to prune the
+    # 1..10 outlets the static publisher emits down to the actual count
+    # the controller reports.
+    client = mocker.MagicMock()
+    unpublish_outlet_discovery(client, "ggs_1", 7)
+    client.publish.assert_called_once_with(
+        "homeassistant/switch/spiderfarmer_ggs_1_outlet_7/config",
+        "",
+        retain=True,
+    )
 
 
 def test_publish_soil_sensor_discovery_emits_three_entities(mocker):

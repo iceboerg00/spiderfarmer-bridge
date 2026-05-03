@@ -22,6 +22,7 @@ def test_air_sensors_partial():
 
 
 def test_soil_avg_block_emits_top_level_topics():
+    # tempSoil/humiSoil/ECSoil at sensor-block top level → soil_avg topics
     data = {"data": {"sensor": {"tempSoil": 22.0, "humiSoil": 60.0, "ECSoil": 1.5}}}
     r = normalize_status("ggs_1", data)
     assert r["spiderfarmer/ggs_1/state/temp_soil"] == "22.0"
@@ -36,34 +37,85 @@ def test_light_emits_json_payload_with_manual_mode():
     assert p == {"state": "ON", "brightness": 80, "effect": "Modus: Manual / Timer"}
 
 
+def test_light_mode_zero_also_displayed_as_manual():
+    # Controller reports modeType 0 (Manual) when the SF cloud or HA sets it
+    # to manual control. UI should still show a known effect, not the raw "0".
+    data = {"data": {"light": {"on": 1, "level": 80, "modeType": 0}}}
+    r = normalize_status("ggs_1", data)
+    p = json.loads(r["spiderfarmer/ggs_1/state/light"])
+    assert p["effect"] == "Modus: Manual / Timer"
+
+
 def test_light_off_state():
     data = {"data": {"light": {"on": 0, "level": 0, "modeType": 1}}}
-    p = json.loads(normalize_status("ggs_1", data)["spiderfarmer/ggs_1/state/light"])
+    r = normalize_status("ggs_1", data)
+    p = json.loads(r["spiderfarmer/ggs_1/state/light"])
     assert p["state"] == "OFF"
 
 
 def test_light2_ppfd_mode():
     data = {"data": {"light2": {"on": 1, "level": 50, "modeType": 12}}}
-    p = json.loads(normalize_status("ggs_1", data)["spiderfarmer/ggs_1/state/light2"])
+    r = normalize_status("ggs_1", data)
+    p = json.loads(r["spiderfarmer/ggs_1/state/light2"])
     assert p["effect"] == "Modus: PPFD"
 
 
+def test_light_controller_flat_schema_maps_to_light_topic():
+    # Standalone Light Controller (LC) reports brightness/mode flat under
+    # data, not nested under data.light. Map it to the same `state/light`
+    # topic so HA's light entity works without a separate code path.
+    data = {"data": {"brightness": 42, "mode": 12}}
+    r = normalize_status("ggs_1", data)
+    p = json.loads(r["spiderfarmer/ggs_1/state/light"])
+    assert p["state"] == "ON"
+    assert p["brightness"] == 42
+    assert p["effect"] == "Modus: PPFD"
+
+
+def test_light_controller_flat_schema_off_when_brightness_zero():
+    data = {"data": {"brightness": 0, "mode": 0}}
+    r = normalize_status("ggs_1", data)
+    p = json.loads(r["spiderfarmer/ggs_1/state/light"])
+    assert p["state"] == "OFF"
+    assert p["brightness"] == 0
+
+
+def test_nested_light_takes_precedence_over_flat_lc_schema():
+    # If both shapes appear (CB+LC mixed setup or mock), the nested
+    # `data.light` wins so existing CB setups are not broken.
+    data = {
+        "data": {
+            "brightness": 99,
+            "mode": 12,
+            "light": {"on": 1, "level": 50, "modeType": 0},
+        }
+    }
+    r = normalize_status("ggs_1", data)
+    p = json.loads(r["spiderfarmer/ggs_1/state/light"])
+    assert p["brightness"] == 50
+    assert p["effect"] == "Modus: Manual / Timer"
+
+
 def test_light_falls_back_to_mlevel_and_monoff_aliases():
+    # Some firmware uses mLevel/mOnOff instead of level/on
     data = {"data": {"light": {"mOnOff": 1, "mLevel": 42}}}
-    p = json.loads(normalize_status("ggs_1", data)["spiderfarmer/ggs_1/state/light"])
+    r = normalize_status("ggs_1", data)
+    p = json.loads(r["spiderfarmer/ggs_1/state/light"])
     assert p["state"] == "ON"
     assert p["brightness"] == 42
 
 
 def test_blower_json_payload():
     data = {"data": {"blower": {"on": 1, "level": 75}}}
-    p = json.loads(normalize_status("ggs_1", data)["spiderfarmer/ggs_1/state/blower"])
+    r = normalize_status("ggs_1", data)
+    p = json.loads(r["spiderfarmer/ggs_1/state/blower"])
     assert p == {"state": "ON", "percentage": 75}
 
 
 def test_fan_json_payload():
     data = {"data": {"fan": {"on": 0, "level": 5}}}
-    p = json.loads(normalize_status("ggs_1", data)["spiderfarmer/ggs_1/state/fan"])
+    r = normalize_status("ggs_1", data)
+    p = json.loads(r["spiderfarmer/ggs_1/state/fan"])
     assert p == {"state": "OFF", "percentage": 5}
 
 
@@ -94,7 +146,7 @@ def test_outlets_emit_per_socket_topics():
 def test_individual_soil_sensors_emit_per_id_topics():
     data = {"data": {"sensors": [
         {"id": "ABC123", "tempSoil": 22.5, "humiSoil": 60.0, "ECSoil": 1.2},
-        {"id": "avg",    "tempSoil": 22.0},
+        {"id": "avg",    "tempSoil": 22.0},  # avg has no per-sensor topic
     ]}}
     r = normalize_status("ggs_1", data)
     assert r["spiderfarmer/ggs_1/state/soil_ABC123_temp"] == "22.5"
@@ -104,6 +156,7 @@ def test_individual_soil_sensors_emit_per_id_topics():
 
 
 def test_accepts_unwrapped_data():
+    # Some payloads may not have a 'data' wrapper
     r = normalize_status("ggs_1", {"heater": {"mOnOff": 1}})
     assert r["spiderfarmer/ggs_1/state/heater"] == "ON"
 

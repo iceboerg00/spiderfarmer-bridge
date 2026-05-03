@@ -60,6 +60,42 @@ def test_light2_ppfd_mode():
     assert p["effect"] == "Modus: PPFD"
 
 
+def test_light_controller_flat_schema_maps_to_light_topic():
+    # Standalone Light Controller (LC) reports brightness/mode flat under
+    # data, not nested under data.light. Map it to the same `state/light`
+    # topic so HA's light entity works without a separate code path.
+    data = {"data": {"brightness": 42, "mode": 12}}
+    r = normalize_status("ggs_1", data)
+    p = json.loads(r["spiderfarmer/ggs_1/state/light"])
+    assert p["state"] == "ON"
+    assert p["brightness"] == 42
+    assert p["effect"] == "Modus: PPFD"
+
+
+def test_light_controller_flat_schema_off_when_brightness_zero():
+    data = {"data": {"brightness": 0, "mode": 0}}
+    r = normalize_status("ggs_1", data)
+    p = json.loads(r["spiderfarmer/ggs_1/state/light"])
+    assert p["state"] == "OFF"
+    assert p["brightness"] == 0
+
+
+def test_nested_light_takes_precedence_over_flat_lc_schema():
+    # If both shapes appear (CB+LC mixed setup or mock), the nested
+    # `data.light` wins so existing CB setups are not broken.
+    data = {
+        "data": {
+            "brightness": 99,
+            "mode": 12,
+            "light": {"on": 1, "level": 50, "modeType": 0},
+        }
+    }
+    r = normalize_status("ggs_1", data)
+    p = json.loads(r["spiderfarmer/ggs_1/state/light"])
+    assert p["brightness"] == 50
+    assert p["effect"] == "Modus: Manual / Timer"
+
+
 def test_light_falls_back_to_mlevel_and_monoff_aliases():
     # Some firmware uses mLevel/mOnOff instead of level/on
     data = {"data": {"light": {"mOnOff": 1, "mLevel": 42}}}

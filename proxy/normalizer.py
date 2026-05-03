@@ -33,6 +33,20 @@ def normalize_status(device_id: str, data: Dict[str, Any]) -> Dict[str, str]:
     # effect dropdown in HA shows a known value regardless of which the
     # controller currently reports.
     _LIGHT_MODES = {0: "Modus: Manual / Timer", 1: "Modus: Manual / Timer", 12: "Modus: PPFD"}
+
+    # Standalone Light Controller (LC) reports light state flat at the top
+    # level — `data.brightness` + `data.mode` instead of nested under
+    # `data.light.{level, modeType}`. Map it to the same `light` topic so
+    # HA's light entity works without a separate code path.
+    if "brightness" in d and "mode" in d and "light" not in d:
+        lc_brightness = d.get("brightness", 0)
+        lc_mode = d.get("mode", 1)
+        result[f"spiderfarmer/{device_id}/state/light"] = json.dumps({
+            "state": _on_off(1 if isinstance(lc_brightness, (int, float)) and lc_brightness > 0 else 0),
+            "brightness": lc_brightness,
+            "effect": _LIGHT_MODES.get(lc_mode, str(lc_mode)),
+        })
+
     light = d.get("light", {})
     if light:
         mode = light.get("modeType", 1)
