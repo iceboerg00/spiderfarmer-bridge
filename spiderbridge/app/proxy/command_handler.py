@@ -57,10 +57,12 @@ def translate_command(
     subfield: Optional[str] = None,
     last_nonzero_level: Optional[dict] = None,
     fan_state: Optional[dict] = None,
+    light_state: Optional[dict] = None,
 ) -> Optional[dict]:
     state = device_state or {}
     last_levels = last_nonzero_level or {}
     fans = fan_state or {}
+    lights = light_state or {}
 
     # ── Outlet ────────────────────────────────────────────────────────────────
     # Minimal payload — the controller already has the schedule/watering
@@ -70,6 +72,108 @@ def translate_command(
     if outlet_num is not None:
         ok = f"O{outlet_num}"
         return _build(mac, uid, "outlet", ok, {"modeType": 0, "mOnOff": _onoff(value)})
+
+    # ── Light / Light2 — app-parity subfield writes ─────────────────────────
+    # Mirror the SF App's "Lampe Einstellungen" screen. Each HA entity (text/
+    # number/switch under /command/light/<subfield>/set) maps to one field on
+    # the controller's light/light2 block. Merge the subfield into a copy of
+    # the cached block so the rest of the lamp's settings stay intact. When
+    # the cache is empty, synthesize a default block so the controller does
+    # not silently reject the partial command.
+    _LIGHT_SUBFIELDS = {
+        "dim_threshold", "off_threshold",
+        "schedule_brightness", "schedule_start", "schedule_end", "fade_minutes",
+        "ppfd_target", "ppfd_start", "ppfd_end", "ppfd_fade_minutes",
+        "ppfd_min", "ppfd_max",
+    }
+    if field in ("light", "light2") and subfield in _LIGHT_SUBFIELDS:
+        cached = lights.get(field)
+        if cached:
+            block = dict(cached)
+        else:
+            cur = state.get(field, {})
+            block = {
+                "modeType": cur.get("modeType", 0),
+                "lastAutoModeType": cur.get("lastAutoModeType", 0),
+                "mOnOff": int(cur.get("on", cur.get("mOnOff", 0))),
+                "mLevel": int(cur.get("level", cur.get("mLevel", 0))),
+                "darkTemp": 0,
+                "offTemp": 0,
+                "timePeriod": [{"enabled": 1, "weekmask": 127,
+                                "startTime": 0, "endTime": 0,
+                                "brightness": 0, "fadeTime": 0}],
+                "ppfdPeriod": [{"enabled": 0, "weekmask": 127,
+                                "startTime": 0, "endTime": 0,
+                                "brightness": 0, "fadeTime": 0}],
+                "ppfdMinBrightness": 0,
+                "ppfdMaxBrightness": 100,
+            }
+            logger.info(
+                "Light cache empty — using synthesized defaults for %s/%s",
+                field, subfield,
+            )
+
+        def _tp0():
+            tp = block.setdefault("timePeriod", [{}])
+            if not tp:
+                tp.append({})
+            return tp[0]
+
+        def _pp0():
+            pp = block.setdefault("ppfdPeriod", [{}])
+            if not pp:
+                pp.append({})
+            return pp[0]
+
+        if subfield == "dim_threshold":
+            try:
+                block["darkTemp"] = float(value)
+            except (ValueError, TypeError):
+                return None
+        elif subfield == "off_threshold":
+            try:
+                block["offTemp"] = float(value)
+            except (ValueError, TypeError):
+                return None
+        elif subfield == "schedule_brightness":
+            try:
+                _tp0()["brightness"] = max(0, min(100, int(float(value))))
+            except (ValueError, TypeError):
+                return None
+        elif subfield == "schedule_start":
+            _tp0()["startTime"] = _hhmm_to_seconds(value)
+        elif subfield == "schedule_end":
+            _tp0()["endTime"] = _hhmm_to_seconds(value)
+        elif subfield == "fade_minutes":
+            try:
+                _tp0()["fadeTime"] = max(0, int(float(value))) * 60
+            except (ValueError, TypeError):
+                return None
+        elif subfield == "ppfd_target":
+            try:
+                _pp0()["brightness"] = max(0, min(1000, int(float(value))))
+            except (ValueError, TypeError):
+                return None
+        elif subfield == "ppfd_start":
+            _pp0()["startTime"] = _hhmm_to_seconds(value)
+        elif subfield == "ppfd_end":
+            _pp0()["endTime"] = _hhmm_to_seconds(value)
+        elif subfield == "ppfd_fade_minutes":
+            try:
+                _pp0()["fadeTime"] = max(0, int(float(value))) * 60
+            except (ValueError, TypeError):
+                return None
+        elif subfield == "ppfd_min":
+            try:
+                block["ppfdMinBrightness"] = max(0, min(100, int(float(value))))
+            except (ValueError, TypeError):
+                return None
+        elif subfield == "ppfd_max":
+            try:
+                block["ppfdMaxBrightness"] = max(0, min(100, int(float(value))))
+            except (ValueError, TypeError):
+                return None
+        return _build(mac, uid, "device", field, block)
 
     # ── Light / Light2 ────────────────────────────────────────────────────────
     # The SF cloud always sends modeType=0 (Manual) for direct app control —

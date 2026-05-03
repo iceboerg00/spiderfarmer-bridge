@@ -327,6 +327,145 @@ def test_fan_subfield_targets_blower_keypath_when_field_is_blower():
     assert r["params"]["blower"]["maxSpeed"] == 5
 
 
+# ── Light app-parity (subfield writes) ─────────────────────────────────────
+
+def _light_block(**overrides):
+    """Realistic cached light block as observed from cloud setConfigField."""
+    blk = {
+        "modeType": 1, "lastAutoModeType": 0, "mOnOff": 1, "mLevel": 65,
+        "darkTemp": 0, "offTemp": 0,
+        "timePeriod": [{"enabled": 1, "weekmask": 127,
+                        "startTime": 21600, "endTime": 72000,
+                        "brightness": 65, "fadeTime": 900}],
+        "ppfdPeriod": [{"enabled": 0, "weekmask": 127,
+                        "startTime": 0, "endTime": 0,
+                        "brightness": 20, "fadeTime": 0}],
+        "ppfdMinBrightness": 0, "ppfdMaxBrightness": 100,
+    }
+    blk.update(overrides)
+    return {"light": blk}
+
+
+def test_light_schedule_brightness_subfield():
+    cached = _light_block()
+    r = translate_command("light", "80", "AABBCC", "uid1",
+                          subfield="schedule_brightness", light_state=cached)
+    assert r["params"]["keyPath"] == ["device", "light"]
+    assert r["params"]["light"]["timePeriod"][0]["brightness"] == 80
+
+
+def test_light_schedule_brightness_clamped():
+    r = translate_command("light", "999", "AABBCC", "uid1",
+                          subfield="schedule_brightness", light_state=_light_block())
+    assert r["params"]["light"]["timePeriod"][0]["brightness"] == 100
+
+
+def test_light_schedule_start_parses_hhmm():
+    r = translate_command("light", "06:30", "AABBCC", "uid1",
+                          subfield="schedule_start", light_state=_light_block())
+    assert r["params"]["light"]["timePeriod"][0]["startTime"] == 6 * 3600 + 30 * 60
+
+
+def test_light_schedule_end_parses_hhmm():
+    r = translate_command("light", "20:00", "AABBCC", "uid1",
+                          subfield="schedule_end", light_state=_light_block())
+    assert r["params"]["light"]["timePeriod"][0]["endTime"] == 20 * 3600
+
+
+def test_light_fade_minutes_to_seconds():
+    r = translate_command("light", "15", "AABBCC", "uid1",
+                          subfield="fade_minutes", light_state=_light_block())
+    assert r["params"]["light"]["timePeriod"][0]["fadeTime"] == 900
+
+
+def test_light_dim_threshold_writes_dark_temp():
+    r = translate_command("light", "27.5", "AABBCC", "uid1",
+                          subfield="dim_threshold", light_state=_light_block())
+    assert r["params"]["light"]["darkTemp"] == 27.5
+
+
+def test_light_off_threshold_writes_off_temp():
+    r = translate_command("light", "30", "AABBCC", "uid1",
+                          subfield="off_threshold", light_state=_light_block())
+    assert r["params"]["light"]["offTemp"] == 30.0
+
+
+def test_light_ppfd_target_writes_ppfd_period_brightness():
+    r = translate_command("light", "650", "AABBCC", "uid1",
+                          subfield="ppfd_target", light_state=_light_block())
+    assert r["params"]["light"]["ppfdPeriod"][0]["brightness"] == 650
+
+
+def test_light_ppfd_target_clamped_to_1000():
+    r = translate_command("light", "9999", "AABBCC", "uid1",
+                          subfield="ppfd_target", light_state=_light_block())
+    assert r["params"]["light"]["ppfdPeriod"][0]["brightness"] == 1000
+
+
+def test_light_ppfd_min_max_clamped_to_100():
+    rmin = translate_command("light", "150", "AABBCC", "uid1",
+                             subfield="ppfd_min", light_state=_light_block())
+    rmax = translate_command("light", "200", "AABBCC", "uid1",
+                             subfield="ppfd_max", light_state=_light_block())
+    assert rmin["params"]["light"]["ppfdMinBrightness"] == 100
+    assert rmax["params"]["light"]["ppfdMaxBrightness"] == 100
+
+
+def test_light_ppfd_start_end_parses_hhmm():
+    rs = translate_command("light", "07:15", "AABBCC", "uid1",
+                           subfield="ppfd_start", light_state=_light_block())
+    re = translate_command("light", "19:45", "AABBCC", "uid1",
+                           subfield="ppfd_end", light_state=_light_block())
+    assert rs["params"]["light"]["ppfdPeriod"][0]["startTime"] == 7 * 3600 + 15 * 60
+    assert re["params"]["light"]["ppfdPeriod"][0]["endTime"] == 19 * 3600 + 45 * 60
+
+
+def test_light_ppfd_fade_minutes_to_seconds():
+    r = translate_command("light", "5", "AABBCC", "uid1",
+                          subfield="ppfd_fade_minutes", light_state=_light_block())
+    assert r["params"]["light"]["ppfdPeriod"][0]["fadeTime"] == 300
+
+
+def test_light_subfield_with_empty_cache_synthesizes_default_block():
+    # No cached block — translator must still produce a valid setConfigField.
+    # Otherwise the controller silently rejects partial writes.
+    r = translate_command("light", "07:00", "AABBCC", "uid1",
+                          subfield="schedule_start", light_state={})
+    assert r is not None
+    blk = r["params"]["light"]
+    assert blk["timePeriod"][0]["startTime"] == 7 * 3600
+    # Synthesized defaults present
+    assert "ppfdPeriod" in blk
+    assert "darkTemp" in blk
+
+
+def test_light_subfield_preserves_cached_block_other_fields():
+    cached = _light_block(modeType=12, mLevel=50)
+    r = translate_command("light", "55", "AABBCC", "uid1",
+                          subfield="ppfd_min", light_state=cached)
+    out = r["params"]["light"]
+    # Changed
+    assert out["ppfdMinBrightness"] == 55
+    # Untouched
+    assert out["modeType"] == 12
+    assert out["mLevel"] == 50
+    assert out["timePeriod"][0]["brightness"] == 65
+
+
+def test_light2_subfield_targets_light2_keypath():
+    r = translate_command("light2", "08:00", "AABBCC", "uid1",
+                          subfield="schedule_start",
+                          light_state={"light2": {"timePeriod": [{}]}})
+    assert r["params"]["keyPath"] == ["device", "light2"]
+    assert "light2" in r["params"]
+
+
+def test_light_invalid_numeric_subfield_returns_none():
+    r = translate_command("light", "abc", "AABBCC", "uid1",
+                          subfield="schedule_brightness", light_state=_light_block())
+    assert r is None
+
+
 def test_fan_subfield_preserves_cached_block_other_fields():
     cached = {"fan": {
         "modeType": 2, "mOnOff": 1, "mLevel": 3,

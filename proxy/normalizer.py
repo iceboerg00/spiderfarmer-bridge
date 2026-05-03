@@ -41,6 +41,56 @@ def _seconds_to_hhmm(seconds) -> str:
     return f"{s // 3600:02d}:{(s % 3600) // 60:02d}"
 
 
+def light_extras_topics(device_id: str, prefix: str, block: Dict[str, Any]) -> Dict[str, str]:
+    """Per-field state topics for a light/light2 block. Used both by
+    normalize_status when getDevSta arrives and by relay_down / handle_command
+    after a setConfigField is observed/sent so the new HA entities populate
+    immediately. Mirror of fan_extras_topics, just for the light schema."""
+    out: Dict[str, str] = {}
+    if not isinstance(block, dict):
+        return out
+    base = f"spiderfarmer/{device_id}/state/{prefix}"
+    if "darkTemp" in block:
+        out[f"{base}/dim_threshold"] = str(block["darkTemp"])
+    if "offTemp" in block:
+        out[f"{base}/off_threshold"] = str(block["offTemp"])
+    # Schedule (Zeitfenstermodus) — timePeriod[0]
+    periods = block.get("timePeriod") or []
+    if isinstance(periods, list) and periods:
+        tp = periods[0] if isinstance(periods[0], dict) else {}
+        if "brightness" in tp:
+            out[f"{base}/schedule_brightness"] = str(tp["brightness"])
+        if "startTime" in tp:
+            out[f"{base}/schedule_start"] = _seconds_to_hhmm(tp["startTime"])
+        if "endTime" in tp:
+            out[f"{base}/schedule_end"] = _seconds_to_hhmm(tp["endTime"])
+        if "fadeTime" in tp:
+            try:
+                out[f"{base}/fade_minutes"] = str(int(tp["fadeTime"]) // 60)
+            except (TypeError, ValueError):
+                pass
+    # PPFD-Mode — own schedule + brightness limits
+    ppfd_periods = block.get("ppfdPeriod") or []
+    if isinstance(ppfd_periods, list) and ppfd_periods:
+        pp = ppfd_periods[0] if isinstance(ppfd_periods[0], dict) else {}
+        if "brightness" in pp:
+            out[f"{base}/ppfd_target"] = str(pp["brightness"])
+        if "startTime" in pp:
+            out[f"{base}/ppfd_start"] = _seconds_to_hhmm(pp["startTime"])
+        if "endTime" in pp:
+            out[f"{base}/ppfd_end"] = _seconds_to_hhmm(pp["endTime"])
+        if "fadeTime" in pp:
+            try:
+                out[f"{base}/ppfd_fade_minutes"] = str(int(pp["fadeTime"]) // 60)
+            except (TypeError, ValueError):
+                pass
+    if "ppfdMinBrightness" in block:
+        out[f"{base}/ppfd_min"] = str(block["ppfdMinBrightness"])
+    if "ppfdMaxBrightness" in block:
+        out[f"{base}/ppfd_max"] = str(block["ppfdMaxBrightness"])
+    return out
+
+
 def fan_extras_topics(device_id: str, prefix: str, block: Dict[str, Any]) -> Dict[str, str]:
     """Per-field state topics for a fan/blower block. Used by normalize_status
     when getDevSta arrives and by relay_down after observing a cloud
@@ -137,6 +187,11 @@ def normalize_status(device_id: str, data: Dict[str, Any],
             "brightness": light.get("level", light.get("mLevel", 0)),
             "effect": _LIGHT_MODES.get(mode, str(mode)),
         })
+        # Merge cached schedule/ppfd/temp fields into the block we hand to
+        # light_extras_topics — getDevSta on its own only carries on/level
+        # and would yield empty entities until the next setConfigField.
+        merged = {**lc.get("light", {}), **light}
+        result.update(light_extras_topics(device_id, "light", merged))
 
     light2 = d.get("light2", {})
     if light2:
@@ -146,6 +201,8 @@ def normalize_status(device_id: str, data: Dict[str, Any],
             "brightness": light2.get("level", light2.get("mLevel", 0)),
             "effect": _LIGHT_MODES.get(mode2, str(mode2)),
         })
+        merged2 = {**lc.get("light2", {}), **light2}
+        result.update(light_extras_topics(device_id, "light2", merged2))
 
     # ── Blower (JSON state) ───────────────────────────────────────────────────
     blower = d.get("blower", {})

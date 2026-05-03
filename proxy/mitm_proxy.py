@@ -12,7 +12,7 @@ from .mqtt_parser import (
     parse_packets, build_publish,
     MQTT_PUBLISH, MQTT_CONNECT, MQTT_SUBSCRIBE,
 )
-from .normalizer import normalize_status, fan_extras_topics
+from .normalizer import normalize_status, fan_extras_topics, light_extras_topics
 from ha.discovery import (
     publish_soil_sensor_discovery as _publish_soil_sensor_discovery,
     unpublish_outlet_discovery as _unpublish_outlet_discovery,
@@ -229,7 +229,8 @@ class MITMProxy:
         payload = translate_command(field, value, session.mac, session.uid, outlet_num,
                                     device_state=session.device_state, subfield=subfield,
                                     last_nonzero_level=session.last_nonzero_level,
-                                    fan_state=session.fan_state)
+                                    fan_state=session.fan_state,
+                                    light_state=session.light_state)
         if payload:
             await session.inject(payload)
             # Optimistic update: write the fan/blower fields to the cache and
@@ -441,6 +442,13 @@ class MITMProxy:
                                             for k in ("light", "light2"):
                                                 if k in keypath and isinstance(params.get(k), dict):
                                                     sess.light_state[k] = params[k]
+                                                    # Also push the per-field
+                                                    # extras so HA settings
+                                                    # entities populate even
+                                                    # without a getDevSta echo.
+                                                    for tpc, val in light_extras_topics(
+                                                            sess.device_id, k, params[k]).items():
+                                                        self.mqtt_client.publish(tpc, val, retain=True)
                         except Exception as e:
                             # Never let logging break the relay
                             logger.debug("relay_down parse error (non-fatal): %s", e)
