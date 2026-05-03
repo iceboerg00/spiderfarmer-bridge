@@ -11,6 +11,15 @@ interface SliderMinConfig {
   fan_exhaust?: number;
 }
 
+interface LayoutOptionsConfig {
+  grid_columns?: number;
+  grid_rows?: number;
+  grid_min_columns?: number;
+  grid_min_rows?: number;
+  grid_max_columns?: number;
+  grid_max_rows?: number;
+}
+
 interface GgsCardConfig extends LovelaceCardConfig {
   device_id?: string;
   /**
@@ -20,6 +29,12 @@ interface GgsCardConfig extends LovelaceCardConfig {
    * Setting it makes the slider start visually at the floor instead of 0.
    */
   slider_min?: SliderMinConfig;
+  /**
+   * HA section-view layout overrides. Re-declared here so HA's YAML
+   * editor type-checks the user's overrides; they're consumed by HA,
+   * not by this card directly.
+   */
+  layout_options?: LayoutOptionsConfig;
 }
 
 const SLIDER_MIN_KEY: Record<string, keyof SliderMinConfig> = {
@@ -98,8 +113,25 @@ export class GgsCard extends LitElement {
     this._config = config ?? {};
   }
 
+  /**
+   * Default YAML inserted into the dashboard when the user adds the card
+   * via "+ Add Card". HA shows this to the user, who can adjust before
+   * saving. Pre-populating layout_options + slider_min saves the user a
+   * round-trip to the docs for the typical SF GGS hardware floors.
+   */
   static getStubConfig(): GgsCardConfig {
-    return { type: 'custom:ggs-card' };
+    return {
+      type: 'custom:ggs-card',
+      layout_options: {
+        grid_columns: 48,
+        grid_rows: 12,
+      },
+      slider_min: {
+        light: 11,
+        fan_circulation: 10,
+        fan_exhaust: 25,
+      },
+    };
   }
 
   getCardSize(): number {

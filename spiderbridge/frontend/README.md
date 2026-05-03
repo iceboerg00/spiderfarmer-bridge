@@ -106,23 +106,34 @@ Wenn du nur einen GGS Controller hast war's das. Mehrere Controller / Hardware-E
 
 Die Karte findet `light.ggs_*` und `fan.ggs_*` Entities automatisch — keine Config nötig wenn du einen Controller hast.
 
-Optionale Parameter im Dashboard-YAML:
+Wenn du die Karte über **"+ Add Card"** hinzufügst, schreibt HA automatisch eine Default-Config rein die schon sinnvolle Werte hat (Vollbreite, Hardware-typische Slider-Mindestwerte). Du kannst alle Felder direkt im YAML-Editor anpassen.
 
 | Option | Typ | Default | Was es tut |
 |---|---|---|---|
 | `device_id` | string | (auto) | Bei mehreren GGS Controllern: bindet die Karte an einen bestimmten (z.B. `ggs_1`). |
-| `slider_min` | object | `{}` | Pro Geräte-Typ ein Mindest-Wert für den Slider (0-100). Hilfreich wenn der Controller eine Hardware-Schwelle hat (z.B. der Abluftventilator startet erst ab 25 %). Keys: `light`, `fan_circulation`, `fan_exhaust`. |
+| `layout_options.grid_columns` | number | `48` | Breite in HA-Section-View Spalten (1-48). 48 = volle Breite. |
+| `layout_options.grid_rows` | number | `12` | Höhe in Section-View Reihen (1-12 typisch). |
+| `layout_options.grid_min_columns` | number | `4` | Untergrenze beim Resize-Drag. |
+| `layout_options.grid_min_rows` | number | `3` | Untergrenze für die Höhe. |
+| `slider_min.light` | number | `11` | Slider-Mindestwert für Light (Light-Dimmer-Floor). |
+| `slider_min.fan_circulation` | number | `10` | Mindestwert für Fan Circulation (= 1 Speed-Level). |
+| `slider_min.fan_exhaust` | number | `25` | Mindestwert für Fan Exhaust (typische mechanische Mindestdrehzahl). |
 
-**Beispiel mit allen Optionen:**
+**Vollständiges Beispiel mit allen Optionen:**
 
 ```yaml
 type: custom:ggs-card
 device_id: ggs_1
+layout_options:
+  grid_columns: 48
+  grid_rows: 12
 slider_min:
   light: 11
   fan_circulation: 10
   fan_exhaust: 25
 ```
+
+> **Wichtig:** `slider_min`-Defaults orientieren sich an typischer SF-GGS-Hardware. Falls dein Setup andere Schwellen hat (z.B. ein anderer Abluftventilator fängt schon bei 15 % an zu drehen), Werte anpassen oder auf `0` setzen.
 
 ---
 
