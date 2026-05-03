@@ -3,6 +3,7 @@ import { customElement, property } from 'lit/decorators.js';
 import { themeVariables } from '../styles/theme';
 import { FAN_ENV_SUBMODES } from '../lib/modes';
 import type { HomeAssistant } from '../lib/ha-types';
+import '../components/switch';
 
 @customElement('ggs-fan-environment-settings')
 export class FanEnvironmentSettings extends LitElement {
@@ -105,10 +106,11 @@ export class FanEnvironmentSettings extends LitElement {
       ${this.extras.environment_natural_wind
         ? html`<div class="row">
             <label>Natural Wind</label>
-            <input type="checkbox"
+            <ggs-switch
               .checked=${this._state('environment_natural_wind') === 'on'}
-              @change=${(e: Event) =>
-                this._toggleSwitch('environment_natural_wind', (e.target as HTMLInputElement).checked)} />
+              .label=${'Natural Wind'}
+              @change=${(e: CustomEvent<boolean>) =>
+                this._toggleSwitch('environment_natural_wind', e.detail)}></ggs-switch>
           </div>`
         : null}
     `;

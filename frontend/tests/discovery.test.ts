@@ -21,7 +21,7 @@ describe('discoverDevices', () => {
     expect(discoverDevices(hass)).toEqual([]);
   });
 
-  it('detects all four canonical devices', () => {
+  it('detects the three card-relevant devices (Light 2 is intentionally skipped)', () => {
     const hass = fakeHass([
       'light.ggs_light_1',
       'light.ggs_light_2',
@@ -31,11 +31,10 @@ describe('discoverDevices', () => {
     const devices = discoverDevices(hass);
     expect(devices.map(d => d.entity)).toEqual([
       'light.ggs_light_1',
-      'light.ggs_light_2',
       'fan.ggs_fan_circulation',
       'fan.ggs_fan_exhaust',
     ]);
-    expect(devices.map(d => d.type)).toEqual(['light', 'light', 'fan', 'fan']);
+    expect(devices.map(d => d.type)).toEqual(['light', 'fan', 'fan']);
   });
 
   it('builds the extras map for Light 1 schedule + ppfd entities', () => {
@@ -104,7 +103,7 @@ describe('discoverDevices', () => {
   });
 
   it('respects the deviceIdFilter', () => {
-    const hass = fakeHass(['light.ggs_light_1', 'light.ggs_light_2']);
+    const hass = fakeHass(['light.ggs_light_1', 'fan.ggs_fan_circulation']);
     expect(discoverDevices(hass, 'ggs_1')).toHaveLength(2);
     expect(discoverDevices(hass, 'ggs_2')).toHaveLength(0);
   });

@@ -2,6 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { themeVariables } from '../styles/theme';
 import type { HomeAssistant } from '../lib/ha-types';
+import '../components/switch';
 
 @customElement('ggs-fan-cycle-settings')
 export class FanCycleSettings extends LitElement {
@@ -126,10 +127,11 @@ export class FanCycleSettings extends LitElement {
       ${this.extras.cycle_natural_wind
         ? html`<div class="row">
             <label>Natural Wind</label>
-            <input type="checkbox"
+            <ggs-switch
               .checked=${this._state('cycle_natural_wind') === 'on'}
-              @change=${(e: Event) =>
-                this._toggleSwitch('cycle_natural_wind', (e.target as HTMLInputElement).checked)} />
+              .label=${'Natural Wind'}
+              @change=${(e: CustomEvent<boolean>) =>
+                this._toggleSwitch('cycle_natural_wind', e.detail)}></ggs-switch>
           </div>`
         : null}
     `;

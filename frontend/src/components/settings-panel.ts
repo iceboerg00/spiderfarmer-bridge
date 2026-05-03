@@ -41,10 +41,16 @@ export class SettingsPanel extends LitElement {
 
   override render() {
     if (this.mode === 'Manual') {
-      // Light has no settings in Manual mode. Fan still exposes the
-      // hardware-level controls (oscillation + natural_wind) that don't
-      // belong to a specific mode.
-      if (this.deviceType === 'fan') {
+      // Light has no settings in Manual mode. Fan exposes oscillation +
+      // natural_wind only when those entities are actually present
+      // (Fan Circulation has both; Fan Exhaust/blower has neither, so
+      // the panel falls back to the placeholder).
+      const hasFanManualExtras =
+        this.deviceType === 'fan' &&
+        Object.keys(this.extras).some(
+          (k) => k.endsWith('_oscillation') || k.endsWith('_natural_wind'),
+        );
+      if (hasFanManualExtras) {
         return html`<ggs-fan-manual-settings
           .hass=${this.hass} .extras=${this.extras}></ggs-fan-manual-settings>`;
       }

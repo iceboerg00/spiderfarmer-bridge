@@ -88,14 +88,25 @@ describe('<ggs-settings-panel>', () => {
     expect(text).toContain('No mode-specific settings');
   });
 
-  it('renders <ggs-fan-manual-settings> for fan + Manual', async () => {
+  it('renders <ggs-fan-manual-settings> for fan + Manual when oscillation/natural_wind extras exist', async () => {
     const el = await makeEl({
       hass: fakeHass,
       deviceType: 'fan',
       mode: 'Manual',
-      extras: {},
+      extras: { schedule_oscillation: 'number.fan_oscillation' },
     });
     expect(el.shadowRoot!.querySelector('ggs-fan-manual-settings')).toBeTruthy();
+  });
+
+  it('falls back to placeholder for fan + Manual with no oscillation/natural_wind extras (Fan Exhaust)', async () => {
+    const el = await makeEl({
+      hass: fakeHass,
+      deviceType: 'fan',
+      mode: 'Manual',
+      extras: { schedule_speed: 'number.fan_exhaust_speed' },
+    });
+    expect(el.shadowRoot!.querySelector('ggs-fan-manual-settings')).toBeNull();
+    expect(el.shadowRoot!.textContent ?? '').toContain('No mode-specific settings');
   });
 
   it('renders an "Unknown mode" placeholder for unrecognized labels', async () => {

@@ -35,11 +35,10 @@ const DEVICES: DeviceDescriptor[] = [
       { prefix: 'light_1_ppfd_mode_', slotPrefix: 'ppfd_' },
     ],
   },
-  {
-    domain: 'light',
-    topSuffix: 'light_2',
-    subPrefixes: [],
-  },
+  // Light 2 is intentionally not surfaced in the GGS card — its
+  // settings mirror Light 1's but the SF App's Light 2 panel has no
+  // schedule/ppfd extras worth a tab. The standard HA light card
+  // handles plain on/off + brightness for it.
   {
     domain: 'fan',
     topSuffix: 'fan_circulation',

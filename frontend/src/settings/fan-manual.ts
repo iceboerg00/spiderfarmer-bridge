@@ -2,6 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { themeVariables } from '../styles/theme';
 import type { HomeAssistant } from '../lib/ha-types';
+import '../components/switch';
 
 /**
  * Settings that still apply when the fan is in Manual mode — oscillation
@@ -91,10 +92,11 @@ export class FanManualSettings extends LitElement {
       ${windEntity
         ? html`<div class="row">
             <label>Natural Wind</label>
-            <input type="checkbox"
+            <ggs-switch
               .checked=${this._state(windEntity) === 'on'}
-              @change=${(e: Event) =>
-                this._toggleSwitch(windEntity, (e.target as HTMLInputElement).checked)} />
+              .label=${'Natural Wind'}
+              @change=${(e: CustomEvent<boolean>) =>
+                this._toggleSwitch(windEntity, e.detail)}></ggs-switch>
           </div>`
         : null}
     `;

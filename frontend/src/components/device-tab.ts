@@ -6,6 +6,7 @@ import type { HomeAssistant, HassEntity } from '../lib/ha-types';
 import type { DeviceType } from '../lib/discovery';
 import './mode-dropdown';
 import './settings-panel';
+import './switch';
 
 @customElement('ggs-device-tab')
 export class DeviceTab extends LitElement {
@@ -37,41 +38,6 @@ export class DeviceTab extends LitElement {
       }
       .name { font-size: 18px; font-weight: 600; color: var(--ggs-fg); }
       .sub { color: var(--ggs-fg-muted); font-size: 13px; }
-      /* Material-style switch — track + thumb. */
-      .switch {
-        --track-w: 48px;
-        --track-h: 26px;
-        --thumb: 20px;
-        position: relative;
-        flex-shrink: 0;
-        width: var(--track-w);
-        height: var(--track-h);
-        border-radius: 999px;
-        border: none;
-        padding: 0;
-        cursor: pointer;
-        background: var(--ggs-divider);
-        transition: background 0.2s;
-        outline: none;
-      }
-      .switch::after {
-        content: '';
-        position: absolute;
-        top: 50%;
-        left: 3px;
-        width: var(--thumb);
-        height: var(--thumb);
-        border-radius: 50%;
-        background: #fff;
-        transform: translateY(-50%);
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-        transition: left 0.2s;
-      }
-      .switch.on { background: var(--accent); }
-      .switch.on::after { left: calc(var(--track-w) - var(--thumb) - 3px); }
-      .switch:focus-visible {
-        box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.4);
-      }
       .slider-row {
         display: flex; align-items: center; gap: var(--ggs-spacing);
         background: var(--ggs-bg); border-radius: var(--ggs-radius);
@@ -324,12 +290,10 @@ export class DeviceTab extends LitElement {
           <div class="name">${name}</div>
           <div class="sub">${this._onOff} · ${this._currentMode}</div>
         </div>
-        <button
-          class=${'switch' + (this._onOff === 'ON' ? ' on' : '')}
-          role="switch"
-          aria-checked=${this._onOff === 'ON'}
-          aria-label="Toggle ${name}"
-          @click=${this._onToggle}></button>
+        <ggs-switch
+          .checked=${this._onOff === 'ON'}
+          .label=${'Toggle ' + name}
+          @change=${this._onToggle}></ggs-switch>
       </div>
       <div class="slider-row">
         <input type="range" class="slider"
