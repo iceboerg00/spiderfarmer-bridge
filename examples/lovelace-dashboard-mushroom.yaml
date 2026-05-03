@@ -87,10 +87,8 @@ views:
           # Schedule Mode — only visible when light effect is "Schedule"
           - type: conditional
             conditions:
-              - condition: state
-                entity: light.ggs_light_1
-                attribute: effect
-                state: Schedule
+              - condition: template
+                value_template: "{{ state_attr('light.ggs_light_1', 'effect') == 'Schedule' }}"
             card:
               type: entities
               title: Schedule Mode
@@ -108,10 +106,8 @@ views:
           # PPFD Mode — only visible when light effect is "PPFD"
           - type: conditional
             conditions:
-              - condition: state
-                entity: light.ggs_light_1
-                attribute: effect
-                state: PPFD
+              - condition: template
+                value_template: "{{ state_attr('light.ggs_light_1', 'effect') == 'PPFD' }}"
             card:
               type: entities
               title: PPFD Mode
@@ -223,10 +219,8 @@ views:
           # Schedule Mode
           - type: conditional
             conditions:
-              - condition: state
-                entity: fan.ggs_fan_circulation
-                attribute: preset_mode
-                state: Schedule
+              - condition: template
+                value_template: "{{ state_attr('fan.ggs_fan_circulation', 'preset_mode') == 'Schedule' }}"
             card:
               type: entities
               title: Schedule Mode
@@ -248,10 +242,8 @@ views:
           # Cycle Mode
           - type: conditional
             conditions:
-              - condition: state
-                entity: fan.ggs_fan_circulation
-                attribute: preset_mode
-                state: Cycle
+              - condition: template
+                value_template: "{{ state_attr('fan.ggs_fan_circulation', 'preset_mode') == 'Cycle' }}"
             card:
               type: entities
               title: Cycle Mode
@@ -278,15 +270,10 @@ views:
           # select inside the card lets the user pick the specific variant.
           - type: conditional
             conditions:
-              - condition: state
-                entity: fan.ggs_fan_circulation
-                attribute: preset_mode
-                state:
-                  - "Environment: Prioritize temperature"
-                  - "Environment: Prioritize humidity"
-                  - "Environment: Temperature only"
-                  - "Environment: Humidity only"
-                  - "Environment: Temperature & humidity"
+              - condition: template
+                value_template: >-
+                  {% set m = state_attr('fan.ggs_fan_circulation', 'preset_mode') %}
+                  {{ m is not none and m.startswith('Environment') }}
             card:
               type: entities
               title: Environment Mode
@@ -378,10 +365,8 @@ views:
           # Schedule Mode
           - type: conditional
             conditions:
-              - condition: state
-                entity: fan.ggs_fan_exhaust
-                attribute: preset_mode
-                state: Schedule
+              - condition: template
+                value_template: "{{ state_attr('fan.ggs_fan_exhaust', 'preset_mode') == 'Schedule' }}"
             card:
               type: entities
               title: Schedule Mode
@@ -399,10 +384,8 @@ views:
           # Cycle Mode
           - type: conditional
             conditions:
-              - condition: state
-                entity: fan.ggs_fan_exhaust
-                attribute: preset_mode
-                state: Cycle
+              - condition: template
+                value_template: "{{ state_attr('fan.ggs_fan_exhaust', 'preset_mode') == 'Cycle' }}"
             card:
               type: entities
               title: Cycle Mode
@@ -424,15 +407,10 @@ views:
           # Environment Mode
           - type: conditional
             conditions:
-              - condition: state
-                entity: fan.ggs_fan_exhaust
-                attribute: preset_mode
-                state:
-                  - "Environment: Prioritize temperature"
-                  - "Environment: Prioritize humidity"
-                  - "Environment: Temperature only"
-                  - "Environment: Humidity only"
-                  - "Environment: Temperature & humidity"
+              - condition: template
+                value_template: >-
+                  {% set m = state_attr('fan.ggs_fan_exhaust', 'preset_mode') %}
+                  {{ m is not none and m.startswith('Environment') }}
             card:
               type: entities
               title: Environment Mode
