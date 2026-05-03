@@ -1,125 +1,125 @@
 # Spider Farmer GGS Card
 
-Custom Home Assistant Lovelace card für den SpiderBridge GGS Controller.
-Eine Karte fürs Dashboard mit Tabs für Light 1, Fan Circulation und
-Fan Exhaust — Mode-Dropdown + alle SF-App-Einstellungen pro Modus.
+Custom Home Assistant Lovelace card for the SpiderBridge GGS Controller.
+One card per dashboard with tabs for Light 1, Fan Circulation and
+Fan Exhaust — mode dropdown plus all SF-App settings per mode.
 
 ---
 
-## Installation — du brauchst nur EINE der drei Optionen
+## Install — pick ONE of the three options
 
-> **Welche soll ich nehmen?**
-> - Du hast HA OS und nutzt **das SpiderBridge Addon**? → **Option A** (zero-click).
-> - Du nutzt **HACS** und betreibst die Bridge manuell auf einem Pi? → **Option B**.
-> - Kein HACS, kein Addon, du willst alles selbst machen? → **Option C**.
-
----
-
-### Option A — Mit dem SpiderBridge HA Addon (empfohlen, Null-Klick)
-
-Wenn du das Addon installierst (oder bereits installiert hast und auf Version 1.4+ updatest), wird die Karte automatisch in HA eingebaut. Du musst **nichts** kopieren oder registrieren.
-
-**Schritt für Schritt:**
-
-1. **HA öffnen** → ⚙️ **Settings** → **Add-ons** → **Add-on Store**
-2. Falls SpiderBridge schon installiert ist → bei **SpiderBridge** auf **"Restart"** klicken (das löst den Auto-Install der Karte aus)
-3. Falls noch nicht installiert: **⋮ (oben rechts)** → **"Repositories"** → URL `https://github.com/iceboerg00/spiderfarmer-bridge` einfügen → **Add** → SpiderBridge installieren → **Start**
-4. **Eine Minute warten** — das Addon kopiert die Karte und registriert sie automatisch.
-5. **Browser-Tab mit HA hart neu laden** — auf Windows `Strg+F5`, auf Mac `Cmd+Shift+R`. Wichtig damit HA die neue Karte lädt.
-6. **HA → Settings → Dashboards** → ein Dashboard öffnen → **"Edit Dashboard"** (Stift oben rechts) → **"+ Add Card"** → ins Suchfeld **"Spider Farmer"** tippen → Karte auswählen.
-
-Falls die Karte unter "+ Add Card" nicht erscheint:
-- Geh zu **Settings → Dashboards → ⋮ (oben rechts) → Resources**.
-- Prüf ob `/local/ggs-card.js` als **JavaScript Module** in der Liste steht.
-- Wenn ja → einfach Browser nochmal hart neu laden (Strg+F5).
-- Wenn nein → klick **+ Add Resource** → URL: `/local/ggs-card.js`, Type: **JavaScript Module** → Save → Browser hart neu laden.
+> **Which one should I use?**
+> - You run HA OS and use **the SpiderBridge addon**? → **Option A** (zero-click).
+> - You use **HACS** and run the bridge manually on a Pi? → **Option B**.
+> - No HACS, no addon, you want full manual control? → **Option C**.
 
 ---
 
-### Option B — Mit HACS (wenn die Bridge nicht als Addon läuft)
+### Option A — With the SpiderBridge HA addon (recommended, zero-click)
 
-Wenn du die Bridge manuell auf einem Raspberry Pi installiert hast (clone + pm2), dann ist HACS der einfachste Weg an die Karte zu kommen.
+When you install (or update) the addon to v1.4+ the card is built and registered as a Lovelace resource automatically. You don't have to copy or register anything.
 
-**Schritt für Schritt:**
+**Step by step:**
 
-1. **HACS muss installiert sein.** Falls nicht: https://hacs.xyz/docs/setup/download — Anleitung dort folgen.
-2. **HA → HACS** öffnen.
-3. Oben rechts **⋮** → **"Custom repositories"** klicken.
-4. Im Pop-up:
+1. **Open HA** → ⚙️ **Settings** → **Add-ons** → **Add-on Store**
+2. If SpiderBridge is already installed → click **Restart** on the SpiderBridge addon (this triggers the card auto-install)
+3. If not installed yet: **⋮ (top right)** → **Repositories** → paste `https://github.com/iceboerg00/spiderfarmer-bridge` → **Add** → install SpiderBridge → **Start**
+4. **Wait a minute** — the addon copies the card and registers it.
+5. **Hard-refresh the browser tab with HA** — Windows: `Ctrl+F5`, Mac: `Cmd+Shift+R`. Required so HA picks up the new resource.
+6. **HA → Settings → Dashboards** → open a dashboard → **Edit Dashboard** (pencil top right) → **+ Add Card** → search **"Spider Farmer"** → pick the card.
+
+If the card doesn't show up under **+ Add Card**:
+- Go to **Settings → Dashboards → ⋮ (top right) → Resources**.
+- Check whether `/local/ggs-card.js` is listed as a **JavaScript Module**.
+- If yes → hard-refresh again (Ctrl+F5).
+- If no → click **+ Add Resource** → URL: `/local/ggs-card.js`, type: **JavaScript Module** → Save → hard-refresh.
+
+---
+
+### Option B — Via HACS (when the bridge isn't running as an addon)
+
+If you installed the bridge manually on a Raspberry Pi (clone + pm2), HACS is the easiest way to get the card.
+
+**Step by step:**
+
+1. **HACS must be installed.** If not yet: https://hacs.xyz/docs/setup/download — follow the docs there.
+2. Open **HA → HACS**.
+3. Top right **⋮** → **Custom repositories**.
+4. In the popup:
    - **Repository:** `https://github.com/iceboerg00/spiderfarmer-bridge`
    - **Type:** **Frontend**
-   - Auf **"Add"** klicken.
-5. Pop-up schließen, HACS-Seite erneut öffnen, in der Liste **"Spider Farmer GGS Card"** suchen → klicken → unten rechts **"Download"** klicken → Version bestätigen.
-6. HACS sagt jetzt "You need to reload your browser" — **Strg+F5** drücken.
-7. **HA → Settings → Dashboards** → Dashboard öffnen → **Edit** → **+ Add Card** → "Spider Farmer" suchen → fertig.
+   - Click **Add**.
+5. Close the popup, reopen the HACS page, find **"Spider Farmer GGS Card"** in the list → click → bottom right **Download** → confirm version.
+6. HACS says "You need to reload your browser" → press **Ctrl+F5**.
+7. **HA → Settings → Dashboards** → open a dashboard → **Edit** → **+ Add Card** → search "Spider Farmer" → done.
 
-Falls die Karte beim "+ Add Card" nicht erscheint, gleicher Resource-Check wie unter Option A.
+If the card doesn't appear under "+ Add Card", run the same Resource check from Option A.
 
 ---
 
-### Option C — Komplett manuell (für Entwickler oder wenn weder Addon noch HACS verfügbar)
+### Option C — Fully manual (for developers, or where neither addon nor HACS is an option)
 
-Du brauchst Node.js auf deinem Rechner um die Karte selbst zu bauen.
+You'll need Node.js on your machine to build the card.
 
-**Schritt für Schritt:**
+**Step by step:**
 
-1. **Node.js installieren** (Version 20 oder neuer). Download: https://nodejs.org/
-2. **Repo klonen:**
+1. **Install Node.js** (version 20 or newer). Download: https://nodejs.org/
+2. **Clone the repo:**
    ```bash
    git clone https://github.com/iceboerg00/spiderfarmer-bridge
    cd spiderfarmer-bridge/spiderbridge/frontend
    ```
-3. **Abhängigkeiten installieren + Karte bauen:**
+3. **Install dependencies + build the card:**
    ```bash
    npm install
    npm run build
    ```
-   Resultat: Datei `dist/ggs-card.js` (ca. 50 kB).
-4. **Datei nach HA kopieren** ins `www/`-Verzeichnis deiner HA-Config.
-   - Bei HA OS / Supervised: `/config/www/ggs-card.js` (über Samba-Share oder File Editor Addon)
-   - Bei Docker: in den gemounteten config-Ordner unter `www/`
-   - Bei HA Core (Python venv): `~/.homeassistant/www/ggs-card.js`
-5. **Resource in HA registrieren:**
-   - HA → **Settings → Dashboards → ⋮ (oben rechts) → Resources**
-   - **+ Add Resource**:
+   Output: `dist/ggs-card.js` (~50 kB).
+4. **Copy the file to HA's `www/`** directory.
+   - HA OS / Supervised: `/config/www/ggs-card.js` (over Samba share or the File Editor addon)
+   - Docker: into the mounted config folder under `www/`
+   - HA Core (Python venv): `~/.homeassistant/www/ggs-card.js`
+5. **Register the resource in HA:**
+   - HA → **Settings → Dashboards → ⋮ (top right) → Resources**
+   - **+ Add Resource:**
      - **URL:** `/local/ggs-card.js`
      - **Resource type:** **JavaScript Module**
    - **Save**.
-6. **Browser hart neu laden** — Strg+F5 / Cmd+Shift+R.
-7. **Dashboard editieren → "+ Add Card" → "Spider Farmer"** suchen → fertig.
+6. **Hard-refresh the browser** — Ctrl+F5 / Cmd+Shift+R.
+7. **Edit a dashboard → "+ Add Card" → search "Spider Farmer"** → done.
 
 ---
 
-## Karte aufs Dashboard
+## Adding the card to a dashboard
 
-Nachdem sie installiert + die Resource registriert ist, einfach im Dashboard als Karte hinzufügen:
+Once installed and the resource is registered, just add it as a card:
 
 ```yaml
 type: custom:ggs-card
 ```
 
-Wenn du nur einen GGS Controller hast war's das. Mehrere Controller / Hardware-Eigenheiten? Siehe **Konfiguration** unten.
+If you have a single GGS Controller, that's it. Multi-controller / hardware quirks? See **Configuration** below.
 
 ---
 
-## Konfiguration
+## Configuration
 
-Die Karte findet `light.ggs_*` und `fan.ggs_*` Entities automatisch — keine Config nötig wenn du einen Controller hast.
+The card auto-discovers `light.ggs_*` and `fan.ggs_*` entities — no config required for single-controller setups.
 
-Wenn du die Karte über **"+ Add Card"** hinzufügst, schreibt HA automatisch eine Default-Config rein die schon sinnvolle Werte hat (Vollbreite, Hardware-typische Slider-Mindestwerte). Du kannst alle Felder direkt im YAML-Editor anpassen.
+When you add the card via **+ Add Card**, HA inserts a default YAML with sensible values (full-width layout, hardware-typical slider floors). You can edit any of these in the YAML editor.
 
-| Option | Typ | Default | Was es tut |
+| Option | Type | Default | What it does |
 |---|---|---|---|
-| `device_id` | string | (auto) | Bei mehreren GGS Controllern: bindet die Karte an einen bestimmten (z.B. `ggs_1`). |
-| `layout_options.grid_columns` | number | `48` | Breite in HA-Section-View Spalten (1-48). 48 = volle Breite. |
-| `layout_options.grid_rows` | number | `12` | Höhe in Section-View Reihen (1-12 typisch). |
-| `layout_options.grid_min_columns` | number | `4` | Untergrenze beim Resize-Drag. |
-| `layout_options.grid_min_rows` | number | `3` | Untergrenze für die Höhe. |
-| `slider_min.light` | number | `11` | Slider-Mindestwert für Light (Light-Dimmer-Floor). |
-| `slider_min.fan_circulation` | number | `10` | Mindestwert für Fan Circulation (= 1 Speed-Level). |
-| `slider_min.fan_exhaust` | number | `25` | Mindestwert für Fan Exhaust (typische mechanische Mindestdrehzahl). |
+| `device_id` | string | (auto) | With multiple GGS controllers, pin the card to a specific one (e.g. `ggs_1`). |
+| `layout_options.grid_columns` | number | `48` | Width in HA section-view columns (1-48). 48 = full width. |
+| `layout_options.grid_rows` | number | `12` | Height in section-view rows (1-12 typical). |
+| `layout_options.grid_min_columns` | number | `4` | Lower bound when dragging the resize handle. |
+| `layout_options.grid_min_rows` | number | `3` | Lower bound for height. |
+| `slider_min.light` | number | `11` | Slider minimum for Light (typical light-dimmer floor). |
+| `slider_min.fan_circulation` | number | `10` | Minimum for Fan Circulation (= 1 speed level). |
+| `slider_min.fan_exhaust` | number | `25` | Minimum for Fan Exhaust (typical mechanical floor). |
 
-**Vollständiges Beispiel mit allen Optionen:**
+**Full example with every option:**
 
 ```yaml
 type: custom:ggs-card
@@ -133,51 +133,51 @@ slider_min:
   fan_exhaust: 25
 ```
 
-> **Wichtig:** `slider_min`-Defaults orientieren sich an typischer SF-GGS-Hardware. Falls dein Setup andere Schwellen hat (z.B. ein anderer Abluftventilator fängt schon bei 15 % an zu drehen), Werte anpassen oder auf `0` setzen.
+> **Note:** the `slider_min` defaults reflect typical SF GGS hardware. If your setup has different floors (e.g. a different exhaust fan that already spins at 15 %), adjust the values or set them to `0`.
 
 ---
 
-## Bedienung — was du in der Karte sehen wirst
+## Using the card — what you'll see
 
-- **Tabs oben** — Light 1, Fan Circulation, Fan Exhaust auswählen.
-- **Status-Header** rechts mit Toggle-Schalter zum An/Aus-Schalten.
-- **Großer Slider** für Helligkeit / Geschwindigkeit.
-- **Mode-Dropdown** (Manual / Schedule / PPFD bei Light, 8 Modi bei Fan).
-- **Settings darunter** wechseln automatisch je nach gewähltem Modus.
-- Bei Light gibt's zusätzlich ganz unten **Temperature Protection** (immer sichtbar, gilt in jedem Modus).
-
----
-
-## Update
-
-- **Option A (Addon):** Addon updaten → Karte wird automatisch mitaktualisiert. Browser hart neu laden.
-- **Option B (HACS):** HACS sagt dir wenn ein Update verfügbar ist → Update installieren → Browser hart neu laden.
-- **Option C (manuell):** `git pull` + `npm run build` + Datei neu kopieren + Browser hart neu laden.
+- **Tabs at the top** — switch between Light 1, Fan Circulation, Fan Exhaust.
+- **Status header** with an on/off toggle on the right.
+- **Big slider** for brightness / speed.
+- **Mode dropdown** (Manual / Schedule / PPFD for light, 8 modes for fan).
+- **Settings underneath** swap automatically when you change the mode.
+- For light there's also a **Temperature Protection** block at the bottom (always visible, applies in every mode).
 
 ---
 
-## Probleme?
+## Updates
 
-| Symptom | Lösung |
+- **Option A (addon):** update the addon → the card updates automatically. Hard-refresh.
+- **Option B (HACS):** HACS surfaces the update → install → hard-refresh.
+- **Option C (manual):** `git pull` + `npm run build` + copy the file → hard-refresh.
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
 |---|---|
-| "+ Add Card" zeigt keine "Spider Farmer GGS"-Karte | Resource registriert? (Settings → Dashboards → Resources) Browser hart neu geladen? |
-| Karte zeigt "No GGS devices found" | Bridge läuft? Discovery durchgelaufen? Schau ob Entitäten wie `light.ggs_light_1` in HA existieren. |
-| Slider geht nicht ganz nach unten | Hardware-Mindestwert. Setze `slider_min` in der Karten-YAML auf den passenden Wert. |
-| Mode-Dropdown ändert sich aber Settings-Karte tauscht nicht | Browser hart neu laden. Wenn das nicht hilft, mit dem Browser-Devtools nachschauen ob ein Fehler in der Konsole steht. |
+| "+ Add Card" doesn't list "Spider Farmer GGS" | Resource registered? (Settings → Dashboards → Resources) Browser hard-refreshed? |
+| Card shows "No GGS devices found" | Bridge running? Discovery completed? Check whether entities like `light.ggs_light_1` exist in HA. |
+| Slider can't go fully to 0 % | Hardware floor. Set the matching `slider_min` in the card YAML to `0` (or a value that works for your hardware). |
+| Mode dropdown changes but settings card doesn't swap | Hard-refresh. If still no fix, open browser devtools → console for errors. |
 
 ---
 
-## Entwicklung
+## Development
 
 ```bash
 cd spiderbridge/frontend
 npm install
 npm test           # vitest
-npm run dev        # rollup watch mode (live-rebuild bei Quellcode-Änderung)
+npm run dev        # rollup watch mode (live rebuild on source change)
 npm run build      # production bundle → dist/ggs-card.js
 npm run lint
 ```
 
-Tests in `tests/`, mirror der `src/` Struktur.
+Tests in `tests/`, mirroring the `src/` layout.
 
-Die Addon-Dockerfile (`spiderbridge/Dockerfile`) macht einen Multi-Stage Build, der die Karte automatisch baut und ins Addon-Image bakt — kein vorgebautes JS-File im Repo.
+The addon's Dockerfile (`spiderbridge/Dockerfile`) does a multi-stage build that automatically runs `npm ci && npm run build` and bakes `ggs-card.js` into the addon image — no pre-built JS in git.

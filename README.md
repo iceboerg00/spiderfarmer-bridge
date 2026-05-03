@@ -2,13 +2,13 @@
   <img src="logo.png" alt="SpiderBridge Logo" width="400"/>
 </p>
 
-Local bridge zwischen dem Spider Farmer GGS Controller und Home Assistant via MQTT Discovery.
+Local bridge between the Spider Farmer GGS Controller and Home Assistant via MQTT Discovery.
 
-Ein Raspberry Pi macht ein Wi-Fi-Hotspot für den GGS Controller, fängt den verschlüsselten MQTT-Traffic ab, normalisiert die Daten und stellt sie Home Assistant bereit. Die offizielle Spider Farmer App und die Cloud funktionieren parallel weiter.
+A Raspberry Pi acts as a Wi-Fi hotspot for the GGS Controller, intercepts the encrypted MQTT traffic, normalizes the data, and exposes it to Home Assistant. The official Spider Farmer app and cloud keep working in parallel.
 
 ```
 GGS Controller
-     │  Wi-Fi (Hotspot vom Pi)
+     │  Wi-Fi (hotspot from the Pi)
      ▼
 Raspberry Pi ──── TLS MITM Proxy :8883
      │                      │
@@ -16,283 +16,283 @@ Raspberry Pi ──── TLS MITM Proxy :8883
      │                      │
      ▼                      ▼
   SF Cloud            Home Assistant
-  (App läuft          (Entities werden
-   weiter)             auto-discovered)
+  (app keeps          (entities auto-
+   working)            discovered)
 ```
 
 ---
 
-## Was du bekommst
+## What you get
 
-Sobald der GGS Controller verbunden ist, tauchen automatisch Entitäten in HA auf — abhängig davon was am Controller hängt:
+Once the GGS Controller is connected, entities show up in HA automatically — depending on what's plugged into the controller:
 
-| Typ | Entitäten |
+| Type | Entities |
 |------|----------|
-| Sensoren | Lufttemperatur, Luftfeuchte, VPD, CO₂, PPFD |
-| Sensoren | Boden-Temperatur / -Feuchte / EC (Durchschnitt + pro Sensor) |
-| Light | Light 1, Light 2 (an/aus, Helligkeit, Modi: Manual/Schedule/PPFD) |
-| Fan | Fan Exhaust (an/aus + Geschwindigkeit 0-100 %) |
-| Fan | Fan Circulation (an/aus + Geschwindigkeit 0-10) |
+| Sensor | Air Temperature, Humidity, VPD, CO₂, PPFD |
+| Sensor | Soil Temperature / Humidity / EC (average + per-sensor) |
+| Light | Light 1, Light 2 (on/off, brightness, modes: Manual / Schedule / PPFD) |
+| Fan | Fan Exhaust (on/off + 0-100 % speed) |
+| Fan | Fan Circulation (on/off + 0-10 speed levels) |
 | Switch | Heater, Humidifier, Dehumidifier |
-| Switch | Outlet 1-10 (je nachdem welche Power Strip dranhängt) |
+| Switch | Outlet 1-10 (count depends on which Power Strip is connected) |
 
-Plus: jede Mode-spezifische Einstellung als eigene Sub-Device-Entität (Schedule-Brightness, PPFD-Target, Fan-Cycle-Run-Time, Environment-Submode, …) — die SF App hat keine Einstellung, die nicht auch in HA verfügbar ist.
+Plus every mode-specific setting as its own sub-device entity (schedule brightness, PPFD target, fan cycle run-time, environment submode, …) — there's no setting in the SF App that's not also exposed in HA.
 
 ---
 
 ## Lovelace Card
 
-Custom HA-Karte die SF-App-mäßig pro Gerät einen Tab zeigt mit Mode-Dropdown und passenden Settings darunter:
+Custom HA card that mirrors the SF App's per-device control with a tab per device, a mode dropdown, and the matching settings panel below:
 
 <p align="center">
   <img src="docs/ggs-card.png" alt="Spider Farmer GGS Card screenshot" width="900"/>
 </p>
 
-Drei Wege zur Karte (siehe **[Karte installieren](spiderbridge/frontend/README.md)** für die Detailanleitung):
+Three install paths (see **[Card install guide](spiderbridge/frontend/README.md)** for full details):
 
-- **HA Addon (Option A unten):** Karte installiert sich automatisch mit dem Addon. Keine Klicks extra.
-- **HACS:** Repository als Frontend-Custom-Repo hinzufügen, Spider Farmer GGS Card installieren.
-- **Manuell:** `npm run build`, Datei kopieren, Resource registrieren.
+- **HA Addon (Option A below):** card auto-installs together with the addon. No extra clicks.
+- **HACS:** add this repository as a custom Frontend repo, install **Spider Farmer GGS Card**.
+- **Manual:** `npm run build`, copy file, register the resource.
 
-Im Dashboard:
+In a dashboard:
 ```yaml
 type: custom:ggs-card
 ```
 
 ---
 
-## Welche Hardware brauche ich?
+## What hardware do I need?
 
-| Bauteil | Was es tut |
+| Part | What it does |
 |---|---|
-| Raspberry Pi mit WiFi (Pi 3, Pi 4, Pi 5, Zero 2 W) | Läuft als Bridge zwischen Controller und HA |
-| LAN-Kabel | **Pflicht** — der Pi muss per Kabel im Heimnetz hängen, weil das WiFi-Modul vollständig vom Hotspot benutzt wird |
-| Spider Farmer GGS Controller | Das Gerät dass du steuern willst (CB, PS5, PS10 oder LC) |
-| Home Assistant | Auf demselben oder einem anderen Gerät im Heimnetz |
+| Raspberry Pi with Wi-Fi (Pi 3, Pi 4, Pi 5, or Zero 2 W) | Runs as the bridge between the controller and HA |
+| Ethernet cable | **Mandatory** — the Pi must reach your network over LAN because the Wi-Fi adapter is dedicated to the GGS hotspot |
+| Spider Farmer GGS Controller | The thing you want to control (CB, PS5, PS10, or LC) |
+| Home Assistant | On the same Pi or a separate device on the same network |
 
-Es gibt **zwei Wege** den Pi einzurichten:
+Two ways to set the Pi up:
 
-- **Option A — Pi läuft Home Assistant OS** und SpiderBridge ist ein Addon. Empfohlen für die meisten User. Pi und HA sind dasselbe Gerät.
-- **Option B — Pi läuft Raspberry Pi OS** mit SpiderBridge als Standalone-Service. HA läuft separat (zweiter Pi, NUC, VM, was auch immer). Für die "klassische" Setup-Variante.
+- **Option A — Pi runs Home Assistant OS** and SpiderBridge is installed as an addon. Recommended for most users. Pi and HA are the same device.
+- **Option B — Pi runs Raspberry Pi OS** with SpiderBridge as a standalone service. HA runs separately (second Pi, NUC, VM, whatever). The "classic" setup.
 
-Wähl eine — der Rest der Anleitung ist getrennt nach Option.
+Pick one — the rest of the guide is split per option.
 
 ---
 
-## Option A — HA-Addon Setup (empfohlen)
+## Option A — HA Addon setup (recommended)
 
-> **Vorraussetzung:** Du hast bereits Home Assistant OS auf dem Pi installiert. Falls noch nicht — siehe https://www.home-assistant.io/installation/raspberrypi für die Erstinstallation, dann hier weitermachen.
+> **Prerequisite:** You already have Home Assistant OS installed on the Pi. If not yet — see https://www.home-assistant.io/installation/raspberrypi for the initial install, then come back here.
 
-> **Stelle sicher:** Pi ist per **LAN-Kabel** am Router. Die WLAN-Schnittstelle wird gleich für den Hotspot verwendet, also brauchst du Kabel-Internet.
+> **Make sure:** the Pi is connected to your router by **Ethernet cable**. The Wi-Fi interface is going to be used for the hotspot, so cabled internet is required.
 
-### Schritt 1 — Repository in HA hinzufügen
+### Step 1 — Add the repository in HA
 
-1. **Home Assistant** im Browser öffnen.
-2. Links unten auf dein Profil-Icon klicken → sicherstellen dass **"Advanced Mode"** an ist (sonst siehst du das Add-on Store nicht voll).
-3. Links: **Settings** → **Add-ons** → unten rechts auf **"Add-on Store"** klicken.
-4. Oben rechts auf das **⋮ (drei Punkte)** → **"Repositories"**.
-5. Im Pop-up dieses URL eintragen: `https://github.com/iceboerg00/spiderfarmer-bridge`
-6. **Add** klicken → **Close**.
+1. Open **Home Assistant** in your browser.
+2. Click your profile icon (bottom left) → make sure **"Advanced Mode"** is on (otherwise you can't see the full Add-on Store).
+3. Sidebar: **Settings** → **Add-ons** → bottom right click **"Add-on Store"**.
+4. Top right click **⋮ (three dots)** → **"Repositories"**.
+5. In the popup paste this URL: `https://github.com/iceboerg00/spiderfarmer-bridge`
+6. Click **Add** → **Close**.
 
-### Schritt 2 — Addon installieren
+### Step 2 — Install the addon
 
-1. Im Add-on Store nach unten scrollen → **"SpiderBridge Add-ons"** Bereich → **SpiderBridge** klicken.
-2. **Install** klicken (kann 1-2 Minuten dauern, der Pi baut die Karte mit).
+1. Scroll down in the Add-on Store → find the **"SpiderBridge Add-ons"** section → click **SpiderBridge**.
+2. Click **Install** (takes 1-2 min — the Pi builds the card too).
 
-### Schritt 3 — Konfigurieren
+### Step 3 — Configure
 
-Auf der Addon-Seite den Tab **Configuration** öffnen. Du siehst Felder wie unten — gib was passt ein:
+On the addon page open the **Configuration** tab. Fields:
 
-| Feld | Was eintragen |
+| Field | What to enter |
 |---|---|
-| `ssid` | Name des WLANs für den GGS Controller, frei wählbar (z.B. `GGS-Tent`) |
-| `password` | WLAN-Passwort, **mindestens 8 Zeichen** (z.B. `SuperSafe123`) |
-| `channel` | `6` ist eine sichere Wahl (ein Zahl von 1 bis 11) |
-| `hotspot_ip` | `192.168.10.1` lassen, falls dieses Subnetz schon im Heimnetz vergeben ist auf etwas anderes ändern |
-| `device_name` | Egal, z.B. `GGS Tent`. Wird der Name in HA. |
-| `hotspot_enabled` | `true` lassen (Pi macht den Hotspot selbst — empfohlen) |
+| `ssid` | Name of the Wi-Fi for the GGS Controller, freely chosen (e.g. `GGS-Tent`) |
+| `password` | Wi-Fi password, **at least 8 characters** (e.g. `SuperSafe123`) |
+| `channel` | `6` is a safe default (any number from 1 to 11) |
+| `hotspot_ip` | Leave at `192.168.10.1`, change only if that subnet is already used in your network |
+| `device_name` | Anything, e.g. `GGS Tent`. Becomes the device name in HA. |
+| `hotspot_enabled` | Leave at `true` (Pi runs the hotspot itself — recommended) |
 
-**Save** klicken (oben rechts).
+Click **Save** (top right).
 
-### Schritt 4 — Addon starten
+### Step 4 — Start the addon
 
-1. Tab **Info** öffnen → **"Start"** klicken.
-2. **"Watchdog"** und **"Start on boot"** aktivieren (damit's nach Neustart automatisch wieder läuft).
-3. Tab **Log** öffnen — du solltest Zeilen sehen wie `Hotspot enabled`, `Proxy listening on 0.0.0.0:8883`, etc. Falls Errors auftauchen, siehe [Troubleshooting](#troubleshooting).
+1. Open the **Info** tab → click **Start**.
+2. Enable **Watchdog** and **Start on boot** (so it comes back up automatically after a reboot).
+3. Open the **Log** tab — you should see lines like `Hotspot enabled`, `Proxy listening on 0.0.0.0:8883`. If you see errors, jump to [Troubleshooting](#troubleshooting).
 
-### Schritt 5 — Home Assistant Core neustarten
+### Step 5 — Restart Home Assistant Core
 
 **Settings → System → Restart** → **Restart Home Assistant Core**.
 
-Das ist nötig damit HA die neue SpiderBridge-Integration mitkriegt.
+This is required for HA to pick up the SpiderBridge integration that the addon installed.
 
-### Schritt 6 — Integration aktivieren
+### Step 6 — Activate the integration
 
 1. **Settings → Devices & services**.
-2. Unten rechts **+ Add Integration** → ins Suchfeld **"SpiderBridge"** tippen → klicken.
-3. Ein einziger Klick auf **Submit** — keine weitere Eingabe nötig.
+2. Bottom right **+ Add Integration** → type **"SpiderBridge"** in the search → click it.
+3. A single click on **Submit** — no extra input needed.
 
-### Schritt 7 — GGS Controller verbinden
+### Step 7 — Connect the GGS Controller
 
-Am GGS Controller in der Spider Farmer App das Wi-Fi auf das in Schritt 3 angelegte Netz umstellen (SSID + Passwort dass du da eingegeben hast). Beim ersten Verbinden wird die MAC automatisch erkannt.
+In the Spider Farmer app on your phone, switch the GGS Controller's Wi-Fi over to the network you created in Step 3 (the SSID + password from there). On first connect the MAC is auto-detected.
 
-In den Addon-Logs solltest du eine Zeile wie diese sehen:
+In the addon log you should see something like:
 
 ```
-🕷  SpiderBridge — Gerät erkannt
+🕷  SpiderBridge — device detected
    MAC: 7C2C67F03DAC
    ID:  GGS Tent
 ```
 
-Ab diesem Moment tauchen die Entitäten in HA auf — meist innerhalb von 10-20 Sekunden.
+Entities appear in HA from that moment on — usually within 10-20 seconds.
 
-### Schritt 8 — Karte aufs Dashboard
+### Step 8 — Add the card to a dashboard
 
-1. Browser **Strg+F5** (auf Mac: Cmd+Shift+R) damit HA die neu installierte Karte lädt.
-2. Dashboard öffnen → **Edit Dashboard** → **+ Add Card** → "Spider Farmer" suchen → fertig.
+1. Hard-refresh the browser — **Ctrl+F5** (Mac: Cmd+Shift+R) — so HA loads the freshly installed card.
+2. Open a dashboard → **Edit Dashboard** → **+ Add Card** → search "Spider Farmer" → done.
 
 ---
 
-## Option B — Standalone Pi mit Raspberry Pi OS
+## Option B — Standalone Pi running Raspberry Pi OS
 
-> **Vorraussetzung:** Du hast Raspberry Pi OS (64-bit) auf dem Pi installiert und SSH-Zugriff. Falls noch nicht — https://www.raspberrypi.com/software/ für den Imager. SSH einschalten in den Imager-Optionen oder durch eine leere `ssh`-Datei auf der SD-Karte.
+> **Prerequisite:** You have Raspberry Pi OS (64-bit) installed on the Pi and SSH access. If not yet — https://www.raspberrypi.com/software/ for the imager. Enable SSH in the imager options or by dropping an empty `ssh` file on the SD card.
 
-> **Stelle sicher:** Pi ist per **LAN-Kabel** am Router. Genauso wie Option A.
+> **Make sure:** Pi is connected to your router by **Ethernet cable**. Same reason as Option A.
 
-### Schritt 1 — Per SSH auf den Pi
+### Step 1 — SSH to the Pi
 
-Auf deinem Hauptrechner ein Terminal öffnen:
+On your main computer open a terminal:
 
 ```bash
-ssh pi@<IP-des-Pi>
+ssh pi@<pi-ip>
 ```
 
-(IP findest du im Router oder mit `nmap`. Standard-User ist meistens `pi` oder der Name den du im Imager gesetzt hast.)
+(IP from your router's device list or via `nmap`. Default user is usually `pi` or whatever you set in the imager.)
 
-### Schritt 2 — One-Line-Installer ausführen
+### Step 2 — Run the one-line installer
 
-Auf dem Pi (im SSH-Terminal):
+On the Pi (in the SSH terminal):
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/iceboerg00/spiderfarmer-bridge/master/setup/bootstrap.sh | sudo bash
 ```
 
-Der Installer:
-1. Klont das Repo nach `/opt/spiderfarmer-bridge`
-2. Startet einen Setup-Wizard. Dort wirst du gefragt:
-   - **SSID** — Name des WLANs für den GGS Controller (z.B. `GGS-Tent`)
-   - **Passwort** — mindestens 8 Zeichen
-   - **Gerätename** — kannst "GGS" lassen oder anpassen
-3. Mosquitto-Broker, Python-venv, TLS-Zertifikate, pm2-Services (`sf-proxy`, `sf-discovery`) werden eingerichtet.
-4. WLAN-Hotspot wird konfiguriert (mit den Stabilitäts-Tweaks die der GGS Controller braucht).
+The installer:
+1. Clones the repo to `/opt/spiderfarmer-bridge`.
+2. Starts a setup wizard that asks for:
+   - **SSID** — name of the Wi-Fi for the GGS Controller (e.g. `GGS-Tent`)
+   - **Password** — at least 8 characters
+   - **Device name** — keep "GGS" or pick your own
+3. Sets up Mosquitto, Python venv, TLS certificates, and the pm2-managed services (`sf-proxy`, `sf-discovery`).
+4. Configures the Wi-Fi hotspot with the stability tweaks the GGS Controller needs (powersave off, PMF disabled).
 
-Das dauert 3-5 Minuten. Wenn fertig, sollte `sudo pm2 status` zwei Services online zeigen.
+Takes 3-5 minutes. When it's done, `sudo pm2 status` should show two services online.
 
-### Schritt 3 — Home Assistant mit Pi verbinden
+### Step 3 — Connect HA to the Pi
 
-Auf deinem HA-Gerät:
+On your HA device:
 
 1. **Settings → Devices & services**.
-2. Falls **MQTT** noch nicht eingerichtet: **+ Add Integration** → MQTT → klicken.
-3. Im Konfigurations-Pop-up:
-   - **Broker:** IP-Adresse des Pi (Ethernet-Adresse, z.B. `192.168.1.100`)
+2. If **MQTT** isn't set up yet: **+ Add Integration** → MQTT → click.
+3. In the configuration popup:
+   - **Broker:** IP of the Pi (its Ethernet address, e.g. `192.168.1.100`)
    - **Port:** `1883`
-   - **Username/Password:** leer lassen
+   - **Username/Password:** leave empty
 4. **Submit**.
 
-Falls MQTT schon eingerichtet ist und auf einen anderen Broker zeigt: zwei Broker gleichzeitig sind möglich, oder du setzt den Pi-Broker als zusätzlichen via YAML-Config in `configuration.yaml`. Detail-Variante: siehe HA MQTT-Docs.
+If MQTT is already wired to a different broker: you can run two brokers in parallel, or define the Pi's broker as an additional one in YAML — see HA's MQTT docs.
 
-### Schritt 4 — GGS Controller verbinden
+### Step 4 — Connect the GGS Controller
 
-In der Spider Farmer App das Wi-Fi des Controllers aufs neu erstellte Netz umstellen (SSID/Passwort vom Wizard).
+In the Spider Farmer app, switch the controller's Wi-Fi to the network from the wizard.
 
-In den Logs auf dem Pi solltest du sehen:
+Watch the logs on the Pi:
 
 ```bash
 sudo pm2 logs sf-proxy --lines 50
 ```
 
-Eine Zeile wie `🕷  SpiderBridge — Gerät erkannt   MAC: ...` zeigt dass alles passt.
+A line like `🕷  SpiderBridge — device detected   MAC: ...` confirms it's working.
 
-In HA tauchen ein paar Sekunden später die Entitäten unter dem `device_name` auf, den du im Wizard gesetzt hast.
+A few seconds later the entities show up in HA under the `device_name` from the wizard.
 
-### Schritt 5 — Karte aufs Dashboard
+### Step 5 — Card on the dashboard
 
-Bei Option B installiert sich die Karte **nicht automatisch** — du brauchst HACS oder den manuellen Weg. Siehe **[Karte installieren](spiderbridge/frontend/README.md)** Option B oder C.
+In Option B the card does **not** auto-install — use HACS or the manual route. See **[Card install guide](spiderbridge/frontend/README.md)** Option B or C.
 
 ---
 
-## Updates einspielen
+## Updates
 
-### Option A (Addon)
+### Option A (addon)
 
-1. **Settings → Add-ons → SpiderBridge** → falls "Update available" oben steht, **Update** klicken.
-2. Addon **Restart** klicken.
-3. **Strg+F5** im Browser (Karte ist evtl. mit aktualisiert).
+1. **Settings → Add-ons → SpiderBridge** → if "Update available" shows, click **Update**.
+2. Click **Restart**.
+3. **Ctrl+F5** in the browser (the card may have updated too).
 
-### Option B (Standalone)
+### Option B (standalone)
 
 ```bash
 sudo git -C /opt/spiderfarmer-bridge pull
 sudo pm2 restart sf-proxy sf-discovery
 ```
 
-Danach für die Karte: HACS → "Spider Farmer GGS Card" → Update, oder manuell `npm run build` + Datei kopieren.
+For the card after an update: HACS → "Spider Farmer GGS Card" → Update, or manually `npm run build` + copy the file again.
 
 ---
 
 ## Troubleshooting
 
-### Controller verbindet sich nicht mit dem Hotspot
-- Der GGS Controller kann nur 2.4-GHz-WLAN — Channel zwischen 1 und 11 nutzen.
-- Option A: im Addon-Log nach `AP-ENABLED` schauen.
-- Option B: `nmcli con show SF-Bridge-Hotspot | grep band`. Sicherstellen dass `802-11-wireless.powersave` auf `2` (disabled) steht — sonst dropt der GGS Controller täglich.
+### Controller doesn't connect to the hotspot
+- The GGS Controller is 2.4 GHz only — pick a channel between 1 and 11.
+- Option A: check the addon log for `AP-ENABLED`.
+- Option B: `nmcli con show SF-Bridge-Hotspot | grep band`. Make sure `802-11-wireless.powersave` is `2` (disabled) — otherwise the controller drops daily.
 
-### Keine Daten in Home Assistant
-- Option A: Addon-Log auf `Proxy listening on 0.0.0.0:8883` checken.
+### No data in Home Assistant
+- Option A: addon log → look for `Proxy listening on 0.0.0.0:8883`.
 - Option B: `sudo pm2 logs sf-proxy --lines 100`.
-- MQTT-Topics manuell anschauen:
+- Inspect MQTT topics directly:
   ```bash
   mosquitto_sub -h <pi-ip> -p 1883 -t 'spiderfarmer/#' -v
   ```
 
-### HA-Outlet schaltet PS5/PS10 nicht
-- Der Proxy muss erst einmal einen Cloud→Device-Befehl gesehen haben, um den Topic-Prefix der Power Strip zu lernen. Lösung: einmal kurz in der SF App eine Steckdose schalten — danach merkt sich der Proxy den Prefix für die ganze Session.
-- `sudo pm2 logs sf-proxy | grep "DOWN topic prefix"` — sobald die Zeile `DOWN topic prefix learned: PS (was CB)` auftaucht, läuft's.
+### HA outlet toggle doesn't switch the PS5/PS10
+- The proxy needs to see one cloud→device packet first to learn the controller's MQTT topic prefix. Easiest trigger: tap one outlet once in the SF App on your phone — afterwards the prefix is locked for the session.
+- `sudo pm2 logs sf-proxy | grep "DOWN topic prefix"` — once the line `DOWN topic prefix learned: PS (was CB)` appears, it's ready.
 
-### Entitäten als "unavailable"
-- Heater/Humidifier/Dehumidifier erscheinen erst nachdem der Controller ihren Status meldet.
-- Option A: Addon **Restart**.
+### Entities show as "unavailable"
+- Heater / Humidifier / Dehumidifier appear only after the controller reports their state.
+- Option A: **Restart** the addon.
 - Option B: `sudo pm2 restart sf-discovery`.
 
-### Karte erscheint nicht unter "+ Add Card"
-- Browser hart neu laden — **Strg+F5**.
-- HA → Settings → Dashboards → ⋮ → **Resources** → prüfen ob `/local/ggs-card.js` als JavaScript Module registriert ist. Falls nicht: manuell hinzufügen (URL `/local/ggs-card.js`, Type "JavaScript Module").
+### Card doesn't appear under "+ Add Card"
+- Hard-refresh the browser — **Ctrl+F5**.
+- HA → Settings → Dashboards → ⋮ → **Resources** → check that `/local/ggs-card.js` is listed as a JavaScript Module. If not: add it manually (URL `/local/ggs-card.js`, type "JavaScript Module").
 
-### Integration weg nach Addon-Update (Option A)
-- Nach jedem Addon-Update das die Integration mitupdates: **Settings → System → Restart Home Assistant Core**.
+### Integration disappears after addon update (Option A)
+- After every addon update that touches the integration: **Settings → System → Restart Home Assistant Core**.
 
 ---
 
-## Pro-Tipps (Option B)
+## Pro tips (Option B)
 
-Services werden mit **pm2** verwaltet, nicht systemd:
+Services are managed by **pm2**, not systemd:
 
 ```bash
-sudo pm2 status                       # Service-Status
-sudo pm2 logs sf-proxy                # Live-Log
-sudo pm2 logs sf-proxy --lines 200    # Letzte 200 Zeilen
-sudo pm2 restart sf-proxy             # Proxy neu starten
-sudo pm2 restart sf-discovery         # Discovery-Service neu starten
+sudo pm2 status                       # service state
+sudo pm2 logs sf-proxy                # live log
+sudo pm2 logs sf-proxy --lines 200    # last 200 lines
+sudo pm2 restart sf-proxy             # restart proxy
+sudo pm2 restart sf-discovery         # restart discovery service
 ```
 
-Live alle MQTT-Topics ansehen die der Bridge published:
+See every MQTT topic the bridge publishes:
 
 ```bash
 mosquitto_sub -h localhost -p 1883 -t 'spiderfarmer/#' -v
 ```
 
-Tests laufen lassen (Option B):
+Run the backend tests:
 
 ```bash
 cd /opt/spiderfarmer-bridge
@@ -301,20 +301,20 @@ cd /opt/spiderfarmer-bridge
 
 ---
 
-## Unterstützte Module
+## Supported modules
 
-| Modul | Sensoren / Lichter | Outlets | HA-Steuerung |
+| Module | Sensors / Lights | Outlets | HA control |
 |---|---|---|---|
-| Control Box (CB) | Air, Soil, CO₂, PPFD, Lichter, Lüfter, Klima-Zubehör | — | voll |
-| Power Strip 5 (PS5) | Air-Sensoren, Lichter, Blower/Fan | 5 | voll |
-| Power Strip 10 (PS10) | Air-Sensoren, Lichter, Blower/Fan | 10 | voll |
-| Light Controller (LC) | 2 Light-Channels mit Brightness, Modus, PPFD | — | teilweise |
+| Control Box (CB) | Air, soil, CO₂, PPFD, lights, fans, climate accessories | — | full |
+| Power Strip 5 (PS5) | Air sensors, lights, blower / fan | 5 | full |
+| Power Strip 10 (PS10) | Air sensors, lights, blower / fan | 10 | full |
+| Light Controller (LC) | 2 light channels with brightness, mode, PPFD | — | partial |
 
-Mehrere Module gleichzeitig am selben Controller laufen lassen geht — Entitäten werden für jedes auto-discovered.
+Multiple modules on the same controller work simultaneously — entities are auto-discovered for each.
 
 ---
 
-## Projekt-Struktur
+## Project structure
 
 ```
 spiderfarmer-bridge/
@@ -322,16 +322,16 @@ spiderfarmer-bridge/
 ├── ha/                    # HA Discovery payloads + publisher
 ├── config/                # config.yaml, mosquitto.conf
 ├── setup/                 # bootstrap.sh, install.sh, wizard.sh, hotspot.sh
-├── certs/                 # TLS-Zertifikate
-├── tests/                 # Backend-Tests (pytest)
-├── docs/                  # README-Assets (Screenshot, etc.)
-├── spiderbridge/          # HA Add-on (Option A)
+├── certs/                 # TLS certificates
+├── tests/                 # backend tests (pytest)
+├── docs/                  # README assets (screenshot, etc.)
+├── spiderbridge/          # HA addon (Option A)
 │   ├── config.yaml
-│   ├── Dockerfile         # Multi-Stage build mit Frontend
-│   ├── app/               # Python-Code für den Container
-│   ├── frontend/          # Lovelace Card (TypeScript + Lit)
-│   ├── integration/       # HA Custom Integration (auto-installed by addon)
-│   └── rootfs/            # s6 Service-Scripts + Auto-Install der Karte
-├── hacs.json              # HACS Frontend-Repo Metadata
-└── repository.yaml        # HA Custom-Repository Metadata
+│   ├── Dockerfile         # multi-stage build that includes the frontend
+│   ├── app/               # Python code for the container
+│   ├── frontend/          # Lovelace card (TypeScript + Lit)
+│   ├── integration/       # HA custom integration (auto-installed by the addon)
+│   └── rootfs/            # s6 service scripts + auto-install of the card
+├── hacs.json              # HACS Frontend repo metadata
+└── repository.yaml        # HA custom-repository metadata
 ```
