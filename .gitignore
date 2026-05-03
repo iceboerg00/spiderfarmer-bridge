@@ -18,3 +18,9 @@ docs/superpowers/
 PLAN.md
 STATE.md
 TODO.md
+
+.superpowers/
+
+spiderbridge/frontend/node_modules/
+spiderbridge/frontend/dist/
+spiderbridge/frontend/coverage/
