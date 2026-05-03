@@ -310,6 +310,14 @@ export class DeviceTab extends LitElement {
     const sliderStep = this.deviceType === 'light'
       ? 1
       : Math.max(1, Math.round(100 / this.speedMax));
+    // Track fill is the thumb's position as a fraction of the visible
+    // range (sliderMin → 100), not the raw value — otherwise a sliderMin
+    // of 25 would draw the fill past the thumb.
+    const range = Math.max(1, 100 - this.sliderMin);
+    const fillPct = Math.max(
+      0,
+      Math.min(100, ((displayLevel - this.sliderMin) / range) * 100),
+    );
     return html`
       <div class="header">
         <div class="header-text">
@@ -327,7 +335,7 @@ export class DeviceTab extends LitElement {
         <input type="range" class="slider"
           min=${this.sliderMin} max="100" step=${sliderStep}
           .value=${String(displayLevel)}
-          style="--ggs-fill: ${displayLevel}"
+          style="--ggs-fill: ${fillPct}"
           @input=${this._onSliderDrag}
           @change=${this._onSliderCommit} />
         <div class="value">${displayLevel}${unit}</div>
