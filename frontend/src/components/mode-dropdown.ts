@@ -7,7 +7,7 @@ export class ModeDropdown extends LitElement {
   @property({ type: String }) value = '';
   @property({ type: Array }) options: string[] = [];
 
-  static styles = [
+  static override styles = [
     themeVariables,
     css`
       select {
