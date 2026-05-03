@@ -29,11 +29,9 @@ SpiderBridge has been confirmed working with the following modules. Multiple mod
 | Module | Sensors / Lights | Outlets | HA control |
 |---|---|---|---|
 | Control Box (CB) | Air, soil, CO₂, PPFD, lights, fans, climate accessories | — | full |
-| Power Strip 5 (PS5) | Air sensors, lights, blower/fan | 5 | on/off* |
-| Power Strip 10 (PS10) | Air sensors, lights, blower/fan | 10 | on/off* |
+| Power Strip 5 (PS5) | Air sensors, lights, blower/fan | 5 | full |
+| Power Strip 10 (PS10) | Air sensors, lights, blower/fan | 10 | full |
 | Light Controller (LC) | 2 light channels with brightness, mode, PPFD | — | partial |
-
-\* PS5/PS10 outlet control requires the SF App to have toggled each outlet at least once after a proxy restart, so the proxy can learn the per-outlet schedule the controller expects (see *PS5/PS10 Outlet "Training"* below).
 
 ---
 
@@ -136,20 +134,6 @@ Soil sensors are auto-discovered with their hardware ID on first connect.
 
 ---
 
-## PS5/PS10 Outlet "Training"
-
-Power Strip controllers reject minimal `{modeType, mOnOff}` commands — they require the full per-outlet block (cycle schedule, time periods, temp/humi compensation, optional watering binding). The proxy learns this block by observing what the SF Cloud sends; HA toggles then replay the same shape with only the on/off state changed.
-
-In practice this means:
-
-- **First-time setup:** open the SF App and toggle each PS5/PS10 outlet you want to control from HA at least once. The proxy stores the full block per outlet in memory.
-- **After every `sudo pm2 restart sf-proxy` or Pi reboot:** repeat the App-toggle once per outlet (the cache lives in RAM).
-- After "training" an outlet, HA on/off control works permanently for that outlet — until the cache is cleared.
-
-If you toggle an outlet from HA before it has been trained, the proxy falls back to a minimal command. CB outlets accept it; PS5/PS10 outlets ignore it. The next App-toggle then primes the cache.
-
----
-
 ## First Connection (both options)
 
 After starting, connect the GGS Controller to the configured Wi-Fi SSID. The MAC address is auto-detected on first connect:
@@ -210,9 +194,8 @@ sudo pm2 restart sf-proxy
 - Verify MQTT topics: `mosquitto_sub -h <pi-ip> -p 1883 -t 'spiderfarmer/#' -v`
 
 **HA outlet toggle has no effect on a PS5/PS10**
-- See *PS5/PS10 Outlet "Training"* above. Toggle the outlet from the SF App once after every proxy restart, then HA control works.
-- Check `sudo pm2 logs sf-proxy | grep "Using cached"` — if you see this line during HA toggles, the proxy is correctly replaying a cached block.
-- Check `sudo pm2 logs sf-proxy | grep "DOWN topic prefix"` — the proxy auto-detects whether the controller uses `CB`, `PS`, `LC` etc. as topic prefix; if it never sees the cloud commanding the device, the prefix stays at the default `CB` and may not match.
+- The proxy needs to see one cloud→device packet first so it can learn the controller's MQTT topic prefix (CB, PS, LC, …). Touching the outlet once in the SF App is the easiest trigger; afterwards the prefix is locked for the session.
+- Check `sudo pm2 logs sf-proxy | grep "DOWN topic prefix"` — the proxy logs `DOWN topic prefix learned: PS (was CB)` (or similar) the first time it sees a non-`CB` cloud command.
 
 **Entities show as unavailable**
 - Accessories (heater, humidifier, etc.) only appear after the controller reports their state

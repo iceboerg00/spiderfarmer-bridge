@@ -20,60 +20,6 @@ def test_outlet_off():
     assert r["params"]["O1"]["mOnOff"] == 0
 
 
-def test_outlet_uses_fetched_block_and_overrides_mode_and_state():
-    # The proxy fetches the controller's current per-outlet config via
-    # getConfigField and passes it in outlet_state. translate_command must
-    # spread that block, force modeType=0 (Manual) and override mOnOff with
-    # the new value, leaving every other field (cycleTime, timePeriod,
-    # wateringEnv, bind, …) untouched.
-    fetched = {
-        "O3": {
-            "modeType": 0,
-            "cycleTime": {"weekmask": 127, "openDur": 120, "closeDur": 300, "times": 8},
-            "timePeriod": [{"weekmask": 127}, {"weekmask": 127}],
-            "tempAdd": 2,
-            "humiAdd": 2,
-            "wateringEnv": {"period": [{"enabled": 1, "startTime": 28800}]},
-            "bind": {"bindType": 1, "id": "373531370F308443"},
-            "mOnOff": 0,
-        }
-    }
-    r = translate_command("outlet_3", "ON", "AABBCC", "uid1",
-                          outlet_num=3, outlet_state=fetched)
-    out = r["params"]["O3"]
-    assert out["mOnOff"] == 1
-    assert out["modeType"] == 0
-    assert out["cycleTime"] == fetched["O3"]["cycleTime"]
-    assert out["timePeriod"] == fetched["O3"]["timePeriod"]
-    assert out["wateringEnv"] == fetched["O3"]["wateringEnv"]
-    assert out["bind"] == fetched["O3"]["bind"]
-    assert out["tempAdd"] == 2
-    assert out["humiAdd"] == 2
-
-
-def test_outlet_forces_manual_mode_even_if_fetched_was_scheduled():
-    # Defensive: if the fetched block reports modeType != 0 (e.g. user had a
-    # schedule active), HA control must still set modeType=0 so the toggle
-    # is honored.
-    fetched = {"O1": {"modeType": 2, "mOnOff": 1, "cycleTime": {"weekmask": 127}}}
-    r = translate_command("outlet_1", "OFF", "AABBCC", "uid1",
-                          outlet_num=1, outlet_state=fetched)
-    assert r["params"]["O1"]["modeType"] == 0
-    assert r["params"]["O1"]["mOnOff"] == 0
-    assert r["params"]["O1"]["cycleTime"] == {"weekmask": 127}
-
-
-def test_outlet_falls_back_to_minimal_when_fetch_unavailable():
-    # If the proxy could not fetch the current config (timeout/error), it
-    # passes outlet_state=None. We still emit a payload so the existing CB
-    # behavior keeps working; PS5/PS10 will ignore but at least nothing
-    # crashes.
-    r = translate_command("outlet_2", "ON", "AABBCC", "uid1",
-                          outlet_num=2, outlet_state=None)
-    assert r["params"]["O2"]["mOnOff"] == 1
-    assert r["params"]["O2"]["modeType"] == 0
-
-
 # ── Light / Light2 ──────────────────────────────────────────────────────────
 
 def test_light_full_json_payload_with_ppfd_mode():

@@ -114,3 +114,36 @@ def test_build_publish_retain():
     assert packets[0].retain is True
     assert packets[0].topic == "spiderfarmer/ggs_1/availability"
     assert packets[0].message == b"online"
+
+
+def _raw_subscribe(topic_filters):
+    """Helper: build raw MQTT SUBSCRIBE packet for one or more topic filters."""
+    from proxy.mqtt_parser import MQTT_SUBSCRIBE
+    payload = bytes([0x00, 0x01])  # packet ID = 1
+    for tf in topic_filters:
+        tb = tf.encode()
+        payload += bytes([len(tb) >> 8, len(tb) & 0xFF]) + tb + bytes([0x00])  # qos 0
+    rl = len(payload)
+    assert rl < 128
+    # SUBSCRIBE packet has flags=0x02 (reserved bits)
+    return bytes([(MQTT_SUBSCRIBE << 4) | 0x02, rl]) + payload
+
+
+def test_parse_subscribe_extracts_topic_filters():
+    raw = _raw_subscribe(["SF/GGS/PS/API/DOWN/AABBCCDDEEFF"])
+    packets, leftover = parse_packets(raw)
+    assert len(packets) == 1
+    assert packets[0].topics == ["SF/GGS/PS/API/DOWN/AABBCCDDEEFF"]
+    assert leftover == b""
+
+
+def test_parse_subscribe_handles_multiple_filters():
+    raw = _raw_subscribe([
+        "SF/GGS/CB/API/DOWN/AABB",
+        "SF/GGS/CB/API/UP/AABB",
+    ])
+    packets, _ = parse_packets(raw)
+    assert packets[0].topics == [
+        "SF/GGS/CB/API/DOWN/AABB",
+        "SF/GGS/CB/API/UP/AABB",
+    ]
