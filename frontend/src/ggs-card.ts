@@ -69,6 +69,21 @@ export class GgsCard extends LitElement {
     return 6;
   }
 
+  /**
+   * HA section view uses this to know which sizes the card supports
+   * when the user drags the resize handle. Lets the card breathe at
+   * 4-12 columns wide and grow vertically with content.
+   */
+  getGridOptions() {
+    return {
+      columns: 6,
+      rows: 'auto' as const,
+      min_columns: 4,
+      max_columns: 12,
+      min_rows: 3,
+    };
+  }
+
   private _devices(): DiscoveredDevice[] {
     if (!this.hass) return [];
     return discoverDevices(this.hass, this._config?.device_id);

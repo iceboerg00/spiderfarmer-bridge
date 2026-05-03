@@ -1,5 +1,5 @@
 import { LitElement, html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 import { themeVariables } from '../styles/theme';
 import { LIGHT_MODES, FAN_PRESET_MODES } from '../lib/modes';
 import type { HomeAssistant, HassEntity } from '../lib/ha-types';
@@ -14,6 +14,8 @@ export class DeviceTab extends LitElement {
   @property({ type: String }) deviceType: DeviceType = 'light';
   @property({ attribute: false }) extras: Record<string, string> = {};
   @property({ type: Number }) speedMax = 10;
+  /** Live value while the user drags the slider; null when not dragging. */
+  @state() private _draggingLevel: number | null = null;
 
   static override styles = [
     themeVariables,
@@ -30,12 +32,73 @@ export class DeviceTab extends LitElement {
       .slider-row {
         display: flex; align-items: center; gap: var(--ggs-spacing);
         background: var(--ggs-bg); border-radius: var(--ggs-radius);
-        padding: var(--ggs-spacing); margin-bottom: var(--ggs-spacing);
+        padding: 18px var(--ggs-spacing);
+        margin-bottom: var(--ggs-spacing);
       }
-      input[type="range"] { flex: 1; accent-color: var(--accent); }
+      .slider {
+        flex: 1;
+        -webkit-appearance: none;
+        appearance: none;
+        height: 28px;
+        background: transparent;
+        cursor: pointer;
+        margin: 0;
+        padding: 0;
+        outline: none;
+      }
+      /* WebKit / Chromium / Edge / Safari */
+      .slider::-webkit-slider-runnable-track {
+        height: 8px;
+        border-radius: 999px;
+        background:
+          linear-gradient(
+            to right,
+            var(--accent) 0%,
+            var(--accent) calc(var(--ggs-fill, 0) * 1%),
+            var(--ggs-divider) calc(var(--ggs-fill, 0) * 1%),
+            var(--ggs-divider) 100%
+          );
+      }
+      .slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #ffffff;
+        border: 3px solid var(--accent);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+        margin-top: -7px;
+        transition: transform 0.15s ease;
+      }
+      .slider:hover::-webkit-slider-thumb { transform: scale(1.1); }
+      .slider:active::-webkit-slider-thumb { transform: scale(1.18); }
+      /* Firefox */
+      .slider::-moz-range-track {
+        height: 8px;
+        border-radius: 999px;
+        background: var(--ggs-divider);
+      }
+      .slider::-moz-range-progress {
+        height: 8px;
+        border-radius: 999px;
+        background: var(--accent);
+      }
+      .slider::-moz-range-thumb {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #ffffff;
+        border: 3px solid var(--accent);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+        transition: transform 0.15s ease;
+      }
+      .slider:hover::-moz-range-thumb { transform: scale(1.1); }
+      .slider:active::-moz-range-thumb { transform: scale(1.18); }
       .value {
         min-width: 56px; text-align: right;
         color: var(--ggs-fg); font-variant-numeric: tabular-nums;
+        font-size: 16px; font-weight: 600;
       }
       .mode-row {
         margin-bottom: var(--ggs-spacing);
@@ -105,8 +168,15 @@ export class DeviceTab extends LitElement {
     return this._state?.state === 'on' ? 'ON' : 'OFF';
   }
 
-  private _onSliderInput = (e: Event) => {
+  /** Fires continuously while dragging — keep state in sync, do NOT call HA. */
+  private _onSliderDrag = (e: Event) => {
+    this._draggingLevel = +(e.target as HTMLInputElement).value;
+  };
+
+  /** Fires on release — commit to HA and clear the draft. */
+  private _onSliderCommit = (e: Event) => {
     const value = +(e.target as HTMLInputElement).value;
+    this._draggingLevel = null;
     if (this.deviceType === 'light') {
       this.hass.callService('light', 'turn_on', {
         entity_id: this.entity,
@@ -184,17 +254,20 @@ export class DeviceTab extends LitElement {
       return html`<div class="sub">Waiting for ${this.entity}…</div>`;
     }
     const name = this._state.attributes?.friendly_name ?? this.entity;
-    const unit = this.deviceType === 'light' ? '%' : '%';
+    const unit = '%';
+    const displayLevel = this._draggingLevel ?? this._level;
     return html`
       <div class="header">
         <div class="name">${name}</div>
         <div class="sub">${this._onOff} · ${this._currentMode}</div>
       </div>
       <div class="slider-row">
-        <input type="range" min="0" max="100" step="1"
-          .value=${String(this._level)}
-          @change=${this._onSliderInput} />
-        <div class="value">${this._level}${unit}</div>
+        <input type="range" class="slider" min="0" max="100" step="1"
+          .value=${String(displayLevel)}
+          style="--ggs-fill: ${displayLevel}"
+          @input=${this._onSliderDrag}
+          @change=${this._onSliderCommit} />
+        <div class="value">${displayLevel}${unit}</div>
       </div>
       <div class="mode-row">
         <div class="label">Mode</div>
