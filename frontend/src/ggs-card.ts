@@ -26,9 +26,15 @@ export class GgsCard extends LitElement {
         display: flex;
         flex-direction: column;
         height: 100%;
+        overflow: hidden;
+      }
+      .content {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
         padding: 16px;
         box-sizing: border-box;
-        overflow: hidden;
       }
       ggs-device-tab {
         flex: 1;
@@ -42,6 +48,7 @@ export class GgsCard extends LitElement {
         border-bottom: 1px solid var(--ggs-divider);
         padding-bottom: 8px;
         overflow-x: auto;
+        flex-shrink: 0;
       }
       .tab {
         padding: 6px 12px;
@@ -135,23 +142,25 @@ export class GgsCard extends LitElement {
 
     return html`
       <ha-card>
-        <div class="tabs" role="tablist">
-          ${devices.map(
-            (d) => html`<button
-              class=${'tab' + (d.entity === active.entity ? ' active' : '')}
-              role="tab"
-              aria-selected=${d.entity === active.entity}
-              @click=${() => (this._activeEntity = d.entity)}>
-              ${d.name}
-            </button>`,
-          )}
+        <div class="content">
+          <div class="tabs" role="tablist">
+            ${devices.map(
+              (d) => html`<button
+                class=${'tab' + (d.entity === active.entity ? ' active' : '')}
+                role="tab"
+                aria-selected=${d.entity === active.entity}
+                @click=${() => (this._activeEntity = d.entity)}>
+                ${d.name}
+              </button>`,
+            )}
+          </div>
+          <ggs-device-tab
+            .hass=${this.hass}
+            .entity=${active.entity}
+            .deviceType=${active.type}
+            .extras=${active.extras}
+            .speedMax=${speedMax}></ggs-device-tab>
         </div>
-        <ggs-device-tab
-          .hass=${this.hass}
-          .entity=${active.entity}
-          .deviceType=${active.type}
-          .extras=${active.extras}
-          .speedMax=${speedMax}></ggs-device-tab>
       </ha-card>
     `;
   }
