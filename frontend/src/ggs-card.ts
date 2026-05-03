@@ -85,15 +85,17 @@ export class GgsCard extends LitElement {
    * documented public API (grid_rows/grid_columns + grid_min/max_*),
    * NOT the older `columns`/`rows`/`min_columns`/etc. names — those
    * silently no-op in newer HA versions.
+   *
+   * No grid_max_* set: HA caps to whatever the section's column-count
+   * allows (12 by default, up to 48 in wider sections). Setting our
+   * own max here would clamp the card before HA's natural cap.
    */
   getLayoutOptions() {
     return {
       grid_rows: 6,
-      grid_columns: 6,
+      grid_columns: 12,
       grid_min_rows: 3,
-      grid_max_rows: 12,
       grid_min_columns: 4,
-      grid_max_columns: 12,
     };
   }
 
