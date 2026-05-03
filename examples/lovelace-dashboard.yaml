@@ -27,9 +27,12 @@ views:
 
       - type: vertical-stack
         cards:
-          - type: light
+          - type: tile
             entity: light.ggs_light_1
             name: Light 1
+            features:
+              - type: light-brightness
+              - type: light-effect
 
           # Schedule Mode — only visible when light effect is "Schedule"
           - type: conditional
@@ -86,9 +89,11 @@ views:
                 name: Off Threshold
 
       # Light 2 — simple control, no settings
-      - type: light
+      - type: tile
         entity: light.ggs_light_2
         name: Light 2
+        features:
+          - type: light-brightness
 
   # ── Fan Circulation ───────────────────────────────────────────────────────
   - title: Fan Circulation
