@@ -1,0 +1,311 @@
+# Spider Farmer GGS — Lovelace Dashboard
+#
+# Drop-in dashboard that mirrors the SF App's "Lampe Einstellungen" and
+# "Lüfter-Einstellungen" screens: top section is the device control,
+# below it a mode picker, then conditional setting groups that swap in
+# based on the selected mode (like the SF App's tabs).
+#
+# Entity IDs assume device_id = "ggs_1" (the default). If your device
+# is registered under a different id, find/replace `ggs_1` with yours.
+#
+# How to use:
+#   1. In HA: Settings → Dashboards → "+ ADD DASHBOARD" → Empty
+#   2. Open the new dashboard → ⋮ → "Edit Dashboard" → ⋮ → "Raw Configuration Editor"
+#   3. Paste the YAML below. Save. Done.
+#
+# Required: only built-in HA cards (entities, light, conditional,
+# vertical-stack). No HACS plugins needed.
+
+title: Spider Farmer
+views:
+
+  # ── Light 1 ───────────────────────────────────────────────────────────────
+  - title: Light
+    icon: mdi:lightbulb
+    cards:
+
+      - type: vertical-stack
+        cards:
+          - type: light
+            entity: light.spiderfarmer_ggs_1_light
+            name: Light 1
+
+          # Schedule Mode — only visible when light effect is "Schedule"
+          - type: conditional
+            conditions:
+              - entity: light.spiderfarmer_ggs_1_light
+                attribute: effect
+                state: Schedule
+            card:
+              type: entities
+              title: Schedule Mode
+              icon: mdi:calendar-clock
+              entities:
+                - entity: number.spiderfarmer_ggs_1_light_schedule_brightness
+                  name: Brightness
+                - entity: text.spiderfarmer_ggs_1_light_schedule_start
+                  name: Start Time
+                - entity: text.spiderfarmer_ggs_1_light_schedule_end
+                  name: End Time
+                - entity: number.spiderfarmer_ggs_1_light_fade_minutes
+                  name: Fade Time
+
+          # PPFD Mode — only visible when light effect is "PPFD"
+          - type: conditional
+            conditions:
+              - entity: light.spiderfarmer_ggs_1_light
+                attribute: effect
+                state: PPFD
+            card:
+              type: entities
+              title: PPFD Mode
+              icon: mdi:white-balance-sunny
+              entities:
+                - entity: number.spiderfarmer_ggs_1_light_ppfd_target
+                  name: Target PPFD
+                - entity: text.spiderfarmer_ggs_1_light_ppfd_start
+                  name: Start Time
+                - entity: text.spiderfarmer_ggs_1_light_ppfd_end
+                  name: End Time
+                - entity: number.spiderfarmer_ggs_1_light_ppfd_fade_minutes
+                  name: Fade Time
+                - entity: number.spiderfarmer_ggs_1_light_ppfd_min
+                  name: Min Brightness
+                - entity: number.spiderfarmer_ggs_1_light_ppfd_max
+                  name: Max Brightness
+
+          # Temperature Protection — applies in every mode, always visible
+          - type: entities
+            title: Temperature Protection
+            icon: mdi:thermometer-alert
+            entities:
+              - entity: number.spiderfarmer_ggs_1_light_dim_threshold_schedule
+                name: Dim Threshold
+              - entity: number.spiderfarmer_ggs_1_light_off_threshold_schedule
+                name: Off Threshold
+
+      # Light 2 — simple control, no settings
+      - type: light
+        entity: light.spiderfarmer_ggs_1_light2
+        name: Light 2
+
+  # ── Fan Circulation ───────────────────────────────────────────────────────
+  - title: Fan Circulation
+    icon: mdi:fan
+    cards:
+
+      - type: vertical-stack
+        cards:
+          - type: tile
+            entity: fan.spiderfarmer_ggs_1_fan
+            name: Fan Circulation
+            features:
+              - type: fan-speed
+              - type: fan-preset-modes
+                style: dropdown
+
+          # Schedule Mode
+          - type: conditional
+            conditions:
+              - entity: fan.spiderfarmer_ggs_1_fan
+                attribute: preset_mode
+                state: Schedule
+            card:
+              type: entities
+              title: Schedule Mode
+              icon: mdi:calendar-clock
+              entities:
+                - entity: text.spiderfarmer_ggs_1_fan_schedule_start
+                  name: Start Time
+                - entity: text.spiderfarmer_ggs_1_fan_schedule_end
+                  name: End Time
+                - entity: number.spiderfarmer_ggs_1_fan_schedule_speed_schedule
+                  name: Speed
+                - entity: number.spiderfarmer_ggs_1_fan_standby_speed_schedule
+                  name: Standby Speed
+                - entity: number.spiderfarmer_ggs_1_fan_oscillation_level_schedule
+                  name: Oscillation
+                - entity: switch.spiderfarmer_ggs_1_fan_natural_wind_schedule
+                  name: Natural Wind
+
+          # Cycle Mode
+          - type: conditional
+            conditions:
+              - entity: fan.spiderfarmer_ggs_1_fan
+                attribute: preset_mode
+                state: Cycle
+            card:
+              type: entities
+              title: Cycle Mode
+              icon: mdi:repeat
+              entities:
+                - entity: text.spiderfarmer_ggs_1_fan_cycle_start
+                  name: Start Time
+                - entity: number.spiderfarmer_ggs_1_fan_cycle_run_minutes
+                  name: Run Time
+                - entity: number.spiderfarmer_ggs_1_fan_cycle_off_minutes
+                  name: Off Time
+                - entity: number.spiderfarmer_ggs_1_fan_cycle_times
+                  name: Cycles
+                - entity: number.spiderfarmer_ggs_1_fan_schedule_speed_cycle
+                  name: Speed
+                - entity: number.spiderfarmer_ggs_1_fan_standby_speed_cycle
+                  name: Standby Speed
+                - entity: number.spiderfarmer_ggs_1_fan_oscillation_level_cycle
+                  name: Oscillation
+                - entity: switch.spiderfarmer_ggs_1_fan_natural_wind_cycle
+                  name: Natural Wind
+
+          # Environment Mode — any of the 5 env variants
+          - type: conditional
+            conditions:
+              - entity: fan.spiderfarmer_ggs_1_fan
+                attribute: preset_mode
+                state:
+                  - "Environment: Prioritize temperature"
+                  - "Environment: Prioritize humidity"
+                  - "Environment: Temperature only"
+                  - "Environment: Humidity only"
+                  - "Environment: Temperature & humidity"
+            card:
+              type: entities
+              title: Environment Mode
+              icon: mdi:weather-partly-cloudy
+              entities:
+                - entity: select.spiderfarmer_ggs_1_fan_env_submode
+                  name: Submode
+                - entity: number.spiderfarmer_ggs_1_fan_schedule_speed_env
+                  name: Speed
+                - entity: number.spiderfarmer_ggs_1_fan_standby_speed_env
+                  name: Standby Speed
+                - entity: number.spiderfarmer_ggs_1_fan_oscillation_level_env
+                  name: Oscillation
+                - entity: switch.spiderfarmer_ggs_1_fan_natural_wind_env
+                  name: Natural Wind
+
+  # ── Fan Exhaust (blower) ──────────────────────────────────────────────────
+  - title: Fan Exhaust
+    icon: mdi:fan-chevron-up
+    cards:
+
+      - type: vertical-stack
+        cards:
+          - type: tile
+            entity: fan.spiderfarmer_ggs_1_blower
+            name: Fan Exhaust
+            features:
+              - type: fan-speed
+              - type: fan-preset-modes
+                style: dropdown
+
+          # Schedule Mode
+          - type: conditional
+            conditions:
+              - entity: fan.spiderfarmer_ggs_1_blower
+                attribute: preset_mode
+                state: Schedule
+            card:
+              type: entities
+              title: Schedule Mode
+              icon: mdi:calendar-clock
+              entities:
+                - entity: text.spiderfarmer_ggs_1_blower_schedule_start
+                  name: Start Time
+                - entity: text.spiderfarmer_ggs_1_blower_schedule_end
+                  name: End Time
+                - entity: number.spiderfarmer_ggs_1_blower_schedule_speed_schedule
+                  name: Speed
+                - entity: number.spiderfarmer_ggs_1_blower_standby_speed_schedule
+                  name: Standby Speed
+
+          # Cycle Mode
+          - type: conditional
+            conditions:
+              - entity: fan.spiderfarmer_ggs_1_blower
+                attribute: preset_mode
+                state: Cycle
+            card:
+              type: entities
+              title: Cycle Mode
+              icon: mdi:repeat
+              entities:
+                - entity: text.spiderfarmer_ggs_1_blower_cycle_start
+                  name: Start Time
+                - entity: number.spiderfarmer_ggs_1_blower_cycle_run_minutes
+                  name: Run Time
+                - entity: number.spiderfarmer_ggs_1_blower_cycle_off_minutes
+                  name: Off Time
+                - entity: number.spiderfarmer_ggs_1_blower_cycle_times
+                  name: Cycles
+                - entity: number.spiderfarmer_ggs_1_blower_schedule_speed_cycle
+                  name: Speed
+                - entity: number.spiderfarmer_ggs_1_blower_standby_speed_cycle
+                  name: Standby Speed
+
+          # Environment Mode — any of the 5 env variants
+          - type: conditional
+            conditions:
+              - entity: fan.spiderfarmer_ggs_1_blower
+                attribute: preset_mode
+                state:
+                  - "Environment: Prioritize temperature"
+                  - "Environment: Prioritize humidity"
+                  - "Environment: Temperature only"
+                  - "Environment: Humidity only"
+                  - "Environment: Temperature & humidity"
+            card:
+              type: entities
+              title: Environment Mode
+              icon: mdi:weather-partly-cloudy
+              entities:
+                - entity: select.spiderfarmer_ggs_1_blower_env_submode
+                  name: Submode
+                - entity: number.spiderfarmer_ggs_1_blower_schedule_speed_env
+                  name: Speed
+                - entity: number.spiderfarmer_ggs_1_blower_standby_speed_env
+                  name: Standby Speed
+
+  # ── Air sensors + Climate switches + Outlets ──────────────────────────────
+  - title: Overview
+    icon: mdi:home
+    cards:
+      - type: entities
+        title: Air
+        icon: mdi:weather-windy
+        entities:
+          - sensor.spiderfarmer_ggs_1_temperature
+          - sensor.spiderfarmer_ggs_1_humidity
+          - sensor.spiderfarmer_ggs_1_vpd
+          - sensor.spiderfarmer_ggs_1_co2
+          - sensor.spiderfarmer_ggs_1_ppfd
+
+      - type: entities
+        title: Soil (avg)
+        icon: mdi:sprout
+        entities:
+          - sensor.spiderfarmer_ggs_1_temp_soil
+          - sensor.spiderfarmer_ggs_1_humi_soil
+          - sensor.spiderfarmer_ggs_1_ec_soil
+
+      - type: entities
+        title: Climate
+        icon: mdi:thermostat
+        entities:
+          - switch.spiderfarmer_ggs_1_heater
+          - switch.spiderfarmer_ggs_1_humidifier
+          - switch.spiderfarmer_ggs_1_dehumidifier
+
+      - type: entities
+        title: Outlets
+        icon: mdi:power-socket-eu
+        entities:
+          - switch.spiderfarmer_ggs_1_outlet_1
+          - switch.spiderfarmer_ggs_1_outlet_2
+          - switch.spiderfarmer_ggs_1_outlet_3
+          - switch.spiderfarmer_ggs_1_outlet_4
+          - switch.spiderfarmer_ggs_1_outlet_5
+          - switch.spiderfarmer_ggs_1_outlet_6
+          - switch.spiderfarmer_ggs_1_outlet_7
+          - switch.spiderfarmer_ggs_1_outlet_8
+          - switch.spiderfarmer_ggs_1_outlet_9
+          - switch.spiderfarmer_ggs_1_outlet_10
