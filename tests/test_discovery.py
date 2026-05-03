@@ -46,7 +46,7 @@ def test_publish_discovery_emits_lights_with_effect_list(mocker):
     assert light["schema"] == "json"
     assert light["brightness"] is True
     assert light["brightness_scale"] == 100
-    assert light["effect_list"] == ["Modus: Manual / Timer", "Modus: PPFD"]
+    assert light["effect_list"] == ["Manual", "Schedule", "PPFD"]
     assert light["command_topic"] == "spiderfarmer/ggs_1/command/light/set"
 
     assert "homeassistant/light/spiderfarmer_ggs_1_light2/config" in pubs
@@ -246,6 +246,7 @@ def test_fan_extras_grouped_into_sub_devices(mocker):
     assert sp["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_speeds"]
     assert sp["min"] == 1 and sp["max"] == 10
 
-    # Natural wind switch on main device
+    # Natural wind lives on the Speeds sub-device — same group as the
+    # other "applies across all modes" fan settings.
     nw = pubs["homeassistant/switch/spiderfarmer_ggs_1_fan_natural_wind/config"]
-    assert nw["device"]["identifiers"] == ["spiderfarmer_ggs_1"]
+    assert nw["device"]["identifiers"] == ["spiderfarmer_ggs_1_fan_speeds"]

@@ -30,20 +30,21 @@ def test_soil_avg_block_emits_top_level_topics():
     assert r["spiderfarmer/ggs_1/state/ec_soil"] == "1.5"
 
 
-def test_light_emits_json_payload_with_manual_mode():
+def test_light_emits_json_payload_with_schedule_mode():
     data = {"data": {"light": {"on": 1, "level": 80, "modeType": 1}}}
     r = normalize_status("ggs_1", data)
     p = json.loads(r["spiderfarmer/ggs_1/state/light"])
-    assert p == {"state": "ON", "brightness": 80, "effect": "Modus: Manual / Timer"}
+    assert p == {"state": "ON", "brightness": 80, "effect": "Schedule"}
 
 
-def test_light_mode_zero_also_displayed_as_manual():
-    # Controller reports modeType 0 (Manual) when the SF cloud or HA sets it
-    # to manual control. UI should still show a known effect, not the raw "0".
+def test_light_mode_zero_displays_as_manual():
+    # modeType 0 = "Manueller Modus" per SF App; modeType 1 is a different
+    # mode (Schedule / Zeitfenster). They must surface as distinct effects
+    # in HA so the dropdown reflects what the controller is actually doing.
     data = {"data": {"light": {"on": 1, "level": 80, "modeType": 0}}}
     r = normalize_status("ggs_1", data)
     p = json.loads(r["spiderfarmer/ggs_1/state/light"])
-    assert p["effect"] == "Modus: Manual / Timer"
+    assert p["effect"] == "Manual"
 
 
 def test_light_off_state():
@@ -57,7 +58,7 @@ def test_light2_ppfd_mode():
     data = {"data": {"light2": {"on": 1, "level": 50, "modeType": 12}}}
     r = normalize_status("ggs_1", data)
     p = json.loads(r["spiderfarmer/ggs_1/state/light2"])
-    assert p["effect"] == "Modus: PPFD"
+    assert p["effect"] == "PPFD"
 
 
 def test_light_controller_flat_schema_maps_to_light_topic():
@@ -69,7 +70,7 @@ def test_light_controller_flat_schema_maps_to_light_topic():
     p = json.loads(r["spiderfarmer/ggs_1/state/light"])
     assert p["state"] == "ON"
     assert p["brightness"] == 42
-    assert p["effect"] == "Modus: PPFD"
+    assert p["effect"] == "PPFD"
 
 
 def test_light_controller_flat_schema_off_when_brightness_zero():
@@ -93,7 +94,7 @@ def test_nested_light_takes_precedence_over_flat_lc_schema():
     r = normalize_status("ggs_1", data)
     p = json.loads(r["spiderfarmer/ggs_1/state/light"])
     assert p["brightness"] == 50
-    assert p["effect"] == "Modus: Manual / Timer"
+    assert p["effect"] == "Manual"
 
 
 def test_light_falls_back_to_mlevel_and_monoff_aliases():

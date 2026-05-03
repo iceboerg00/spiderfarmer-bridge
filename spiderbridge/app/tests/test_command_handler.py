@@ -23,7 +23,7 @@ def test_outlet_off():
 # ── Light / Light2 ──────────────────────────────────────────────────────────
 
 def test_light_full_json_payload_with_ppfd_mode():
-    val = json.dumps({"state": "ON", "brightness": 80, "effect": "Modus: PPFD"})
+    val = json.dumps({"state": "ON", "brightness": 80, "effect": "PPFD"})
     r = translate_command("light", val, "AABBCC", "uid1")
     assert r["params"]["keyPath"] == ["device", "light"]
     assert r["params"]["light"]["mOnOff"] == 1
@@ -32,14 +32,29 @@ def test_light_full_json_payload_with_ppfd_mode():
 
 
 def test_light2_full_json_payload_with_manual_mode():
-    # "Modus: Manual / Timer" effect maps to modeType 0 (Manual). Sending
-    # modeType 1 (Timer) makes the controller follow the schedule and ignore
-    # direct mOnOff/mLevel commands, which broke HA control of the lamp.
-    val = json.dumps({"state": "ON", "brightness": 50, "effect": "Modus: Manual / Timer"})
+    val = json.dumps({"state": "ON", "brightness": 50, "effect": "Manual"})
     r = translate_command("light2", val, "AABBCC", "uid1")
     assert r["params"]["keyPath"] == ["device", "light2"]
     assert r["params"]["light2"]["modeType"] == 0
     assert r["params"]["light2"]["mLevel"] == 50
+
+
+def test_light_schedule_mode_maps_to_modeType_1():
+    # "Schedule" effect must produce modeType=1 (Zeitfenstermodus); older
+    # code merged 0 and 1 under one label which made schedule-mode
+    # selection a no-op.
+    val = json.dumps({"state": "ON", "brightness": 70, "effect": "Schedule"})
+    r = translate_command("light", val, "AABBCC", "uid1")
+    assert r["params"]["light"]["modeType"] == 1
+
+
+def test_light_legacy_effect_label_still_resolves_to_manual():
+    # Old HA configs that have "Modus: Manual / Timer" stored as the effect
+    # should still work after the rename — the alias keeps them on
+    # modeType=0 instead of falling through to the default.
+    val = json.dumps({"state": "ON", "effect": "Modus: Manual / Timer"})
+    r = translate_command("light", val, "AABBCC", "uid1")
+    assert r["params"]["light"]["modeType"] == 0
 
 
 def test_light_default_mode_is_manual():

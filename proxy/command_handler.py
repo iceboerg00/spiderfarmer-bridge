@@ -76,7 +76,14 @@ def translate_command(
     # mode 1 (Timer) makes the controller follow the stored schedule and
     # ignore mOnOff/mLevel. Mirror the cloud's payload shape so HA actually
     # controls the lamp instead of fighting the schedule.
-    _EFFECT_TO_MODE = {"Modus: Manual / Timer": 0, "Modus: PPFD": 12}
+    # Mode label ↔ modeType, confirmed against SF App. Old "Manual / Timer"
+    # alias kept so HA selects from previous installs still resolve.
+    _EFFECT_TO_MODE = {
+        "Manual": 0,
+        "Schedule": 1,
+        "PPFD": 12,
+        "Modus: Manual / Timer": 0,
+    }
     if field in ("light", "light2"):
         cur = state.get(field, {})
         try:

@@ -103,7 +103,9 @@ def normalize_status(device_id: str, data: Dict[str, Any]) -> Dict[str, str]:
     # Both modeType 0 (Manual) and 1 (Timer) map to the same UI label so the
     # effect dropdown in HA shows a known value regardless of which the
     # controller currently reports.
-    _LIGHT_MODES = {0: "Modus: Manual / Timer", 1: "Modus: Manual / Timer", 12: "Modus: PPFD"}
+    # modeType values confirmed against the SF App.
+    # 0 = Manual, 1 = Schedule (Zeitfenstermodus), 12 = PPFD.
+    _LIGHT_MODES = {0: "Manual", 1: "Schedule", 12: "PPFD"}
 
     # Standalone Light Controller (LC) reports light state flat at the top
     # level — `data.brightness` + `data.mode` instead of nested under

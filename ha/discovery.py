@@ -143,7 +143,7 @@ def _light(device_id: str, module: str, name: str, cfg: dict) -> Tuple[str, dict
         "brightness": True,
         "brightness_scale": 100,
         "effect": True,
-        "effect_list": ["Modus: Manual / Timer", "Modus: PPFD"],
+        "effect_list": ["Manual", "Schedule", "PPFD"],
         "availability_topic": f"{base}/availability",
         "device": _device_info(device_id, cfg),
     }
@@ -232,16 +232,15 @@ def _fan_extras(device_id: str, module: str, friendly: str, cfg: dict) -> list:
                      "Off Time", 0, 1440, 1, cfg, unit="min", device=cycle_dev),
         _number_path(device_id, module, "cycle_times",
                      "Cycles", 1, 100, 1, cfg, device=cycle_dev),
-        # Speeds
+        # Speeds (catch-all fan settings — applies across all modes)
         _number_path(device_id, module, "schedule_speed",
                      "Speed", 1, 10, 1, cfg, device=speeds_dev),
         _number_path(device_id, module, "standby_speed",
                      "Standby Speed", 0, 10, 1, cfg, device=speeds_dev),
         _number_path(device_id, module, "oscillation_level",
                      "Oscillation", 0, 10, 1, cfg, device=speeds_dev),
-        # Natural wind sits on the main device.
         _switch_path(device_id, module, "natural_wind",
-                     f"{friendly} Natural Wind", cfg),
+                     "Natural Wind", cfg, device=speeds_dev),
     ]
 
 
