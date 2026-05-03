@@ -65,11 +65,12 @@ export class FanEnvironmentSettings extends LitElement {
       ${this.extras.environment_submode
         ? html`<div class="row">
             <label>Submode</label>
-            <select .value=${this._state('environment_submode')}
+            <select
               @change=${(e: Event) =>
                 this._setSelect('environment_submode', (e.target as HTMLSelectElement).value)}>
               ${FAN_ENV_SUBMODES.map(
-                (m) => html`<option value=${m}>${m}</option>`,
+                (m) => html`<option value=${m}
+                  ?selected=${m === this._state('environment_submode')}>${m}</option>`,
               )}
             </select>
           </div>`

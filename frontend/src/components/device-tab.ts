@@ -143,6 +143,10 @@ export class DeviceTab extends LitElement {
     return id ? (this.hass.states[id]?.state ?? '') : '';
   }
 
+  override updated() {
+    this.style.setProperty('--accent', this._accent);
+  }
+
   private _renderTempProtection() {
     if (this.deviceType !== 'light') return null;
     if (!this.extras.schedule_dim_threshold && !this.extras.schedule_off_threshold) {
@@ -182,7 +186,6 @@ export class DeviceTab extends LitElement {
     const name = this._state.attributes?.friendly_name ?? this.entity;
     const unit = this.deviceType === 'light' ? '%' : '%';
     return html`
-      <style>:host { --accent: ${this._accent}; }</style>
       <div class="header">
         <div class="name">${name}</div>
         <div class="sub">${this._onOff} · ${this._currentMode}</div>
