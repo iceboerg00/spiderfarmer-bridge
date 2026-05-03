@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import ssl
-import time
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -11,7 +10,7 @@ import yaml
 
 from .mqtt_parser import (
     parse_packets, build_publish,
-    MQTT_PUBLISH, MQTT_CONNECT,
+    MQTT_PUBLISH, MQTT_CONNECT, MQTT_SUBSCRIBE,
 )
 from .normalizer import normalize_status
 from ha.discovery import (
@@ -36,7 +35,7 @@ class ProxySession:
     """Represents one active GGS Controller connection."""
 
     def __init__(self, device_id: str, mac: str, uid: str,
-                 mqtt_client: mqtt.Client, cache_dir: Optional[Path] = None):
+                 mqtt_client: mqtt.Client):
         self.device_id = device_id
         self.mac = mac
         self.uid = uid
@@ -49,84 +48,9 @@ class ProxySession:
         # Defaults to "CB" (Control Box) but PS5/PS10/LC may use a different
         # value; using the wrong prefix means our injects are silently ignored.
         self.down_topic_prefix: str = "CB"
-        # msgId → Future resolved when the device's UP response carries the
-        # same msgId. Used by request_config to await getConfigField replies.
-        self.pending_requests: Dict[str, "asyncio.Future[dict]"] = {}
-        self._msg_counter: int = 0
-        # O# → last full setConfigField block observed in cloud→device
-        # traffic; replayed on HA toggle so PS5/PS10 accept the command.
-        # Persisted to disk per device_id.
-        self._cache_dir = cache_dir
-        self.outlet_state: Dict[str, dict] = self._load_outlet_cache()
         # Static discovery publishes outlets 1..10 unconditionally; once the
         # controller reports its actual outlet set we unpublish the rest.
         self._outlet_discovery_pruned: bool = False
-
-    def _cache_file(self) -> Optional[Path]:
-        if self._cache_dir is None:
-            return None
-        return self._cache_dir / "outlet_cache.json"
-
-    def _load_outlet_cache(self) -> Dict[str, dict]:
-        f = self._cache_file()
-        if f is None or not f.exists():
-            return {}
-        try:
-            payload = json.loads(f.read_text(encoding="utf-8"))
-            section = payload.get(self.device_id, {})
-            if isinstance(section, dict):
-                logger.info("[%s] Loaded %d outlet block(s) from cache",
-                            self.device_id, len(section))
-                return section
-        except Exception as e:
-            logger.warning("[%s] Failed to load outlet cache: %s", self.device_id, e)
-        return {}
-
-    def _save_outlet_cache(self) -> None:
-        f = self._cache_file()
-        if f is None:
-            return
-        try:
-            f.parent.mkdir(parents=True, exist_ok=True)
-            payload: Dict[str, dict] = {}
-            if f.exists():
-                try:
-                    payload = json.loads(f.read_text(encoding="utf-8"))
-                    if not isinstance(payload, dict):
-                        payload = {}
-                except Exception:
-                    payload = {}
-            payload[self.device_id] = self.outlet_state
-            tmp = f.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
-            tmp.replace(f)
-        except Exception as e:
-            logger.warning("[%s] Failed to write outlet cache: %s", self.device_id, e)
-
-    def _next_msg_id(self) -> str:
-        self._msg_counter += 1
-        return str(int(time.time() * 1000) + self._msg_counter)
-
-    async def request_config(self, key_path: list, timeout: float = 3.0) -> dict:
-        """Send a getConfigField request to the controller and await the
-        response data. Returns the `data` dict from the UP reply, or raises
-        TimeoutError if the controller does not respond in time."""
-        msg_id = self._next_msg_id()
-        payload = {
-            "method": "getConfigField",
-            "pid": self.mac,
-            "params": {"keyPath": key_path},
-            "msgId": msg_id,
-            "uid": self.uid,
-        }
-        loop = asyncio.get_event_loop()
-        future: "asyncio.Future[dict]" = loop.create_future()
-        self.pending_requests[msg_id] = future
-        try:
-            await self.inject(payload)
-            return await asyncio.wait_for(future, timeout=timeout)
-        finally:
-            self.pending_requests.pop(msg_id, None)
 
     def set_upstream(self, writer: asyncio.StreamWriter) -> None:
         self._upstream_writer = writer
@@ -166,11 +90,6 @@ class MITMProxy:
         self._config_path = config_path
         self._sessions: Dict[str, ProxySession] = {}
         self._known_soil_ids: Dict[str, set] = {}  # device_id → set of seen sensor IDs
-        # Persistent cache directory for outlet blocks. HA addon stores
-        # writable state under /data so the cache survives container
-        # restarts and add-on updates.
-        cache_dir_str = config.get("proxy", {}).get("cache_dir", "/data")
-        self._cache_dir: Optional[Path] = Path(cache_dir_str) if cache_dir_str else None
 
     def build_server_ssl_ctx(self) -> ssl.SSLContext:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -260,35 +179,9 @@ class MITMProxy:
         if field.startswith("outlet_") and field[7:].isdigit():
             outlet_num = int(field[7:])
 
-        # Outlet command: prefer the passive cache when available (instant),
-        # only do the active getConfigField roundtrip when the outlet has
-        # never been observed. PS5/PS10 controllers usually ignore proxy-
-        # originated getConfigField anyway, so doing it on every toggle just
-        # wasted a 3-second timeout per click.
-        outlet_state: Optional[dict] = None
-        if outlet_num is not None:
-            ok = f"O{outlet_num}"
-            cached = session.outlet_state.get(ok)
-            if cached:
-                outlet_state = {ok: cached}
-            else:
-                try:
-                    data = await session.request_config(["outlet", ok], timeout=3.0)
-                    if isinstance(data, dict):
-                        block = data.get(ok, data)
-                        if isinstance(block, dict) and block:
-                            outlet_state = {ok: block}
-                except asyncio.TimeoutError:
-                    logger.info("[%s] getConfigField timeout for %s — no cached block either",
-                                session.device_id, ok)
-                except Exception as e:
-                    logger.warning("[%s] getConfigField error for %s: %s",
-                                   session.device_id, ok, e)
-
         payload = translate_command(field, value, session.mac, session.uid, outlet_num,
                                     device_state=session.device_state, subfield=subfield,
-                                    last_nonzero_level=session.last_nonzero_level,
-                                    outlet_state=outlet_state)
+                                    last_nonzero_level=session.last_nonzero_level)
         if payload:
             await session.inject(payload)
 
@@ -319,11 +212,10 @@ class MITMProxy:
                 if dev is None:
                     logger.warning("Unbekanntes Gerät client_id=%s — Session als unknown", client_id)
                     sid = f"unknown_{client_id.replace(':', '')}"
-                    s = ProxySession(sid, client_id, "", self.mqtt_client,
-                                     cache_dir=self._cache_dir)
+                    s = ProxySession(sid, client_id, "", self.mqtt_client)
                 else:
                     s = ProxySession(dev["id"], dev["mac"], dev.get("uid", ""),
-                                     self.mqtt_client, cache_dir=self._cache_dir)
+                                     self.mqtt_client)
                 s.set_upstream(upstream_writer)
                 s.set_client(client_writer)
                 self._sessions[s.device_id] = s
@@ -346,6 +238,27 @@ class MITMProxy:
                         for pkt in packets:
                             if pkt.packet_type == MQTT_CONNECT and pkt.client_id:
                                 nonlocal_session[0] = await on_connect_packet(pkt.client_id)
+                            elif pkt.packet_type == MQTT_SUBSCRIBE and pkt.topics:
+                                # Learn the controller's DOWN topic prefix
+                                # immediately from its SUBSCRIBE — no SF App
+                                # interaction or cloud command needed.
+                                sess = nonlocal_session[0]
+                                if sess is not None:
+                                    for t in pkt.topics:
+                                        parts = t.split("/")
+                                        if (len(parts) >= 6 and parts[0] == "SF"
+                                                and parts[1] == "GGS"
+                                                and parts[3] == "API"
+                                                and parts[4] == "DOWN"
+                                                and parts[2]):
+                                            new_prefix = parts[2]
+                                            if sess.down_topic_prefix != new_prefix:
+                                                logger.info(
+                                                    "[%s] DOWN topic prefix learned from SUBSCRIBE: %s (was %s)",
+                                                    sess.device_id, new_prefix,
+                                                    sess.down_topic_prefix,
+                                                )
+                                                sess.down_topic_prefix = new_prefix
                             elif pkt.packet_type == MQTT_PUBLISH:
                                 if nonlocal_session[0]:
                                     dev_cfg = self._find_device_by_id(nonlocal_session[0].device_id) or {}
@@ -418,17 +331,6 @@ class MITMProxy:
                                             p.topic, keypath,
                                             json.dumps(params, separators=(',', ':')),
                                         )
-                                        sess = nonlocal_session[0]
-                                        if sess is not None:
-                                            changed = False
-                                            for k, v in params.items():
-                                                if (k.startswith("O") and k[1:].isdigit()
-                                                        and isinstance(v, dict)):
-                                                    if sess.outlet_state.get(k) != v:
-                                                        sess.outlet_state[k] = v
-                                                        changed = True
-                                            if changed:
-                                                sess._save_outlet_cache()
                         except Exception as e:
                             logger.debug("relay_down parse error (non-fatal): %s", e)
                             buf_down = b""
@@ -488,16 +390,6 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
         data = json.loads(pkt.message)
     except Exception:
         return
-
-    # Resolve any pending request whose response carries the same msgId.
-    # Done before the method gate so getConfigField (and other) replies
-    # land in their futures even though we only fully process getDevSta.
-    msg_id = data.get("msgId")
-    if msg_id and msg_id in session.pending_requests:
-        future = session.pending_requests[msg_id]
-        if not future.done():
-            future.set_result(data.get("data", {}))
-
     method = data.get("method")
     if method != "getDevSta":
         return

@@ -23,6 +23,7 @@ class MQTTPacket:
     retain: bool = False              # PUBLISH only
     packet_id: Optional[int] = None   # PUBLISH QoS>0 only
     client_id: Optional[str] = None   # CONNECT only
+    topics: Optional[List[str]] = None  # SUBSCRIBE only — list of topic filters
 
 
 def _decode_remaining_length(data: bytes, offset: int) -> Tuple[int, int]:
@@ -88,6 +89,8 @@ def parse_packets(buf: bytes) -> Tuple[List[MQTTPacket], bytes]:
             _parse_publish_fields(pkt, flags, raw_payload)
         elif packet_type == MQTT_CONNECT:
             _parse_connect_fields(pkt, raw_payload)
+        elif packet_type == MQTT_SUBSCRIBE:
+            _parse_subscribe_fields(pkt, raw_payload)
 
         packets.append(pkt)
 
@@ -126,6 +129,30 @@ def _parse_connect_fields(pkt: MQTTPacket, raw: bytes) -> None:
         pkt.client_id = raw[p: p + id_len].decode("utf-8", errors="replace")
     except (IndexError, Exception):
         pkt.client_id = None
+
+
+def _parse_subscribe_fields(pkt: MQTTPacket, raw: bytes) -> None:
+    """Extract topic filters from a SUBSCRIBE payload.
+
+    Variable header: 2-byte packet ID. Payload: list of (topic_filter_len: 2,
+    topic_filter: utf-8, requested_qos: 1)."""
+    if len(raw) < 2:
+        return
+    p = 2  # skip packet ID
+    topics: List[str] = []
+    while p < len(raw):
+        if p + 2 > len(raw):
+            break
+        tlen = (raw[p] << 8) | raw[p + 1]
+        p += 2
+        if p + tlen > len(raw):
+            break
+        try:
+            topics.append(raw[p:p + tlen].decode("utf-8", errors="replace"))
+        except Exception:
+            pass
+        p += tlen + 1  # skip the requested-QoS byte
+    pkt.topics = topics
 
 
 def build_publish(topic: str, message: bytes, qos: int = 0, retain: bool = False,
