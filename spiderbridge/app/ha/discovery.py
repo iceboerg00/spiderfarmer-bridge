@@ -291,11 +291,14 @@ def _light_extras(device_id: str, module: str, friendly: str, cfg: dict) -> list
         separate settings card).
     Note: dim_threshold/off_threshold appear under each sub-device with
     distinct unique_ids but identical state/command topics, so HA shows
-    them in both cards while a single change keeps them synchronized."""
+    them in both cards while a single change keeps them synchronized.
+    Sub-device names are prefixed with the controller's friendly_name
+    so HA generates entity_ids that match the main device's prefix."""
     parent_id = f"spiderfarmer_{device_id}"
-    sched_dev = _settings_subdevice(parent_id, friendly, f"{module}_schedule",
+    full_name = f"{cfg.get('friendly_name', 'GGS')} {friendly}"
+    sched_dev = _settings_subdevice(parent_id, full_name, f"{module}_schedule",
                                     "Schedule Mode", "Schedule settings")
-    ppfd_dev = _settings_subdevice(parent_id, friendly, f"{module}_ppfd",
+    ppfd_dev = _settings_subdevice(parent_id, full_name, f"{module}_ppfd",
                                    "PPFD Mode", "PPFD settings")
     HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
     return [
@@ -358,11 +361,12 @@ def _fan_extras(device_id: str, module: str, friendly: str, cfg: dict,
     (blower has no shaking head). `natural_wind=False` skips Natural Wind
     (blower has no natural-wind feature either)."""
     parent_id = f"spiderfarmer_{device_id}"
-    sched_dev = _settings_subdevice(parent_id, friendly, f"{module}_schedule",
+    full_name = f"{cfg.get('friendly_name', 'GGS')} {friendly}"
+    sched_dev = _settings_subdevice(parent_id, full_name, f"{module}_schedule",
                                     "Schedule Mode", "Schedule settings")
-    cycle_dev = _settings_subdevice(parent_id, friendly, f"{module}_cycle",
+    cycle_dev = _settings_subdevice(parent_id, full_name, f"{module}_cycle",
                                     "Cycle Mode", "Cycle settings")
-    env_dev = _settings_subdevice(parent_id, friendly, f"{module}_env",
+    env_dev = _settings_subdevice(parent_id, full_name, f"{module}_env",
                                   "Environment Mode", "Environment settings")
     HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
 

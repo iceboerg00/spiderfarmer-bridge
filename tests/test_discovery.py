@@ -399,6 +399,31 @@ def test_speed_settings_aliased_into_every_fan_mode_card(mocker):
         assert len(uids) == 3  # all three aliases have distinct unique_ids
 
 
+def test_sub_device_names_carry_main_friendly_name_prefix(mocker):
+    # HA generates entity_ids from <device_name>_<entity_name>. To keep
+    # the prefix consistent between main-device entities (e.g.
+    # fan.ggs_fan_exhaust) and sub-device entities (e.g.
+    # text.ggs_fan_schedule_mode_start_time), the sub-device name has
+    # to start with the main device's friendly_name. CFG sets it to
+    # "Test GGS" — every sub-device name should therefore begin with that.
+    client = mocker.MagicMock()
+    publish_discovery_for_device(client, "ggs_1", CFG)
+    pubs = _publish_calls(client)
+
+    main_friendly = CFG["friendly_name"]
+    seen_subdevice_names = set()
+    for p in pubs.values():
+        ids = tuple(p["device"]["identifiers"])
+        if ids == ("spiderfarmer_ggs_1",):
+            continue
+        seen_subdevice_names.add(p["device"]["name"])
+    assert seen_subdevice_names, "expected at least one sub-device"
+    for name in seen_subdevice_names:
+        assert name.startswith(main_friendly + " "), (
+            f"sub-device {name!r} does not start with {main_friendly!r}"
+        )
+
+
 def test_speeds_sub_device_no_longer_exists(mocker):
     # Speeds was a fourth card holding the catch-all settings (Speed,
     # Oscillation, Natural Wind). Removed in favor of aliasing those

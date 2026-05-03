@@ -47,11 +47,11 @@ hotspot_ip="${hotspot_ip:-192.168.10.1}"
 echo ""
 
 # ── Gerät ─────────────────────────────────────────────────────────────────────
-echo "── GGS Controller ──────────────────────────────"
-read -rp "  Gerätename in Home Assistant [Spider Farmer GGS]: " friendly_name
-friendly_name="${friendly_name:-Spider Farmer GGS}"
-
-echo ""
+# Gerätename ist hartkodiert "GGS" — sorgt für einheitliche Entity-IDs
+# (light.ggs_light_1, fan.ggs_fan_exhaust, text.ggs_light_1_ppfd_start, …)
+# über alle Sub-Devices hinweg. Multi-Device-Setups können den Namen
+# nachträglich in config/config.yaml unter devices[].friendly_name anpassen.
+friendly_name="GGS"
 
 # ── Internes Passwort (kein User-Input nötig, zufällig generieren) ────────────
 bridge_pass="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24 || true)"

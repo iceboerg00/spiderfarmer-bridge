@@ -25,4 +25,4 @@ devices:
     type: "CB"
     id: "ggs_1"
     uid: ""               # Fill after observing first CONNECT packet
-    friendly_name: "Spider Farmer GGS"
+    friendly_name: "GGS"
