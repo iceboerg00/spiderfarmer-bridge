@@ -11,7 +11,6 @@ def test_load_config_uses_ha_options_when_options_json_exists(tmp_path):
         "password": "secret123",
         "channel": 6,
         "hotspot_ip": "192.168.10.1",
-        "device_name": "GGS Test",
     }
     (tmp_path / "options.json").write_text(json.dumps(options))
 
@@ -25,7 +24,9 @@ def test_load_config_uses_ha_options_when_options_json_exists(tmp_path):
     assert result["hotspot"]["ssid"] == "TestNet"
     assert result["hotspot"]["enabled"] is True
     assert result["hotspot"]["channel"] == 6
-    assert result["devices"][0]["friendly_name"] == "GGS Test"
+    # friendly_name is hardcoded to "GGS" — required for the Lovelace
+    # card to find entities with the ggs_* prefix.
+    assert result["devices"][0]["friendly_name"] == "GGS"
 
 
 def test_load_config_falls_back_to_yaml_when_no_options_json(tmp_path):
@@ -49,7 +50,6 @@ def test_load_config_merges_persisted_devices(tmp_path):
         "password": "secret",
         "channel": 6,
         "hotspot_ip": "192.168.10.1",
-        "device_name": "GGS",
     }
     (tmp_path / "options.json").write_text(json.dumps(options))
     (tmp_path / "devices.yaml").write_text(

@@ -1,6 +1,6 @@
 name: SpiderBridge
 slug: spiderbridge
-version: "1.4.0"
+version: "1.4.1"
 description: Spider Farmer GGS Controller → Home Assistant via MQTT Discovery
 url: https://github.com/iceboerg00/spiderfarmer-bridge
 arch:
@@ -22,11 +22,9 @@ options:
   password: "changeme123"
   channel: 6
   hotspot_ip: "192.168.10.1"
-  device_name: "Spider Farmer GGS"
 schema:
   hotspot_enabled: bool
   ssid: str
   password: str
   channel: "int(1,11)"
   hotspot_ip: str
-  device_name: str

@@ -109,8 +109,9 @@ On the addon page open the **Configuration** tab. Fields:
 | `password` | Wi-Fi password, **at least 8 characters** (e.g. `SuperSafe123`) |
 | `channel` | `6` is a safe default (any number from 1 to 11) |
 | `hotspot_ip` | Leave at `192.168.10.1`, change only if that subnet is already used in your network |
-| `device_name` | Anything, e.g. `GGS Tent`. Becomes the device name in HA. |
 | `hotspot_enabled` | Leave at `true` (Pi runs the hotspot itself — recommended) |
+
+> The HA device name is hardcoded to `GGS` so entity IDs end up as `light.ggs_light_1`, `fan.ggs_fan_circulation`, …  This is what the Lovelace card expects — renaming it would break the card.
 
 Click **Save** (top right).
 
@@ -182,8 +183,7 @@ The installer:
 2. Starts a setup wizard that asks for:
    - **SSID** — name of the Wi-Fi for the GGS Controller (e.g. `GGS-Tent`)
    - **Password** — at least 8 characters
-   - **Device name** — keep "GGS" or pick your own
-3. Sets up Mosquitto, Python venv, TLS certificates, and the pm2-managed services (`sf-proxy`, `sf-discovery`).
+3. Sets up Mosquitto, Python venv, TLS certificates, and the pm2-managed services (`sf-proxy`, `sf-discovery`). The device name is hardcoded to `GGS` so entity IDs end up consistent (`light.ggs_light_1`, `fan.ggs_fan_circulation`, …) — required for the Lovelace card to find them.
 4. Configures the Wi-Fi hotspot with the stability tweaks the GGS Controller needs (powersave off, PMF disabled).
 
 Takes 3-5 minutes. When it's done, `sudo pm2 status` should show two services online.
@@ -214,7 +214,7 @@ sudo pm2 logs sf-proxy --lines 50
 
 A line like `🕷  SpiderBridge — device detected   MAC: ...` confirms it's working.
 
-A few seconds later the entities show up in HA under the `device_name` from the wizard.
+A few seconds later the entities show up in HA under the device named `GGS`.
 
 ### Step 5 — Card on the dashboard
 

@@ -9,31 +9,36 @@ HA_OPTIONS_PATH = "/data/options.json"
 HA_DEVICES_PATH = "/data/devices.yaml"
 
 
-def _default_devices(friendly_name: str = "Spider Farmer GGS") -> list:
+# Hardcoded so HA generates entity_ids with a "ggs_*" prefix consistently
+# across both install paths — required for the Lovelace card to find
+# the entities. Renaming would silently break <ggs-card>.
+GGS_FRIENDLY_NAME = "GGS"
+
+
+def _default_devices() -> list:
     return [
         {
             "mac": "AABBCCDDEEFF",
             "type": "CB",
             "id": "ggs_1",
             "uid": "",
-            "friendly_name": friendly_name,
+            "friendly_name": GGS_FRIENDLY_NAME,
         }
     ]
 
 
-def _load_ha_devices(friendly_name: str = "Spider Farmer GGS") -> list:
+def _load_ha_devices() -> list:
     p = Path(HA_DEVICES_PATH)
     if p.exists():
         try:
             with open(p) as f:
-                return yaml.safe_load(f) or _default_devices(friendly_name)
+                return yaml.safe_load(f) or _default_devices()
         except yaml.YAMLError as e:
             logger.warning("Corrupt devices.yaml, using defaults: %s", e)
-    return _default_devices(friendly_name)
+    return _default_devices()
 
 
 def _build_config_from_ha_options(options: dict) -> dict:
-    friendly_name = options.get("device_name", "Spider Farmer GGS")
     return {
         "hotspot": {
             "enabled": options.get("hotspot_enabled", True),
@@ -60,7 +65,7 @@ def _build_config_from_ha_options(options: dict) -> dict:
             "local_password": "",
             "ha_mqtt_password": "",
         },
-        "devices": _load_ha_devices(friendly_name),
+        "devices": _load_ha_devices(),
     }
 
 
