@@ -124,9 +124,11 @@ def publish_discovery_for_device(
 
     # ── Air sensors ───────────────────────────────────────────────────────────
     entities += [
-        _sensor(device_id, "temperature", "Air Temperature", "°C",  "temperature", device_cfg),
-        _sensor(device_id, "humidity",    "Air Humidity",    "%",   "humidity",    device_cfg),
-        _sensor(device_id, "vpd",         "Air VPD",         "kPa", None,          device_cfg),
+        _sensor(device_id, "temperature", "Air Temperature", "°C",       "temperature", device_cfg),
+        _sensor(device_id, "humidity",    "Air Humidity",    "%",        "humidity",    device_cfg),
+        _sensor(device_id, "vpd",         "Air VPD",         "kPa",      None,          device_cfg),
+        _sensor(device_id, "co2",         "Air CO₂",         "ppm",      "carbon_dioxide", device_cfg),
+        _sensor(device_id, "ppfd",        "Air PPFD",        "µmol/m²/s", None,         device_cfg),
     ]
 
     # ── Light ─────────────────────────────────────────────────────────────────
@@ -161,6 +163,17 @@ def publish_discovery_for_device(
     for topic, payload in entities:
         client.publish(topic, json.dumps(payload), retain=True)
         logger.debug("Discovery published: %s", topic)
+
+
+def unpublish_outlet_discovery(
+    client: mqtt.Client, device_id: str, outlet_num: int
+) -> None:
+    """Remove an outlet entity from HA by publishing an empty retained payload
+    to its discovery topic. Used by the proxy when it learns the controller
+    has fewer outlets than the static discovery published (e.g. PS5 has 5,
+    static publishes 10)."""
+    uid = f"spiderfarmer_{device_id}_outlet_{outlet_num}"
+    client.publish(f"homeassistant/switch/{uid}/config", "", retain=True)
 
 
 def publish_soil_sensor_discovery(

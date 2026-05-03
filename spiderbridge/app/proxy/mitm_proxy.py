@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import ssl
+import time
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -13,7 +14,10 @@ from .mqtt_parser import (
     MQTT_PUBLISH, MQTT_CONNECT,
 )
 from .normalizer import normalize_status
-from ha.discovery import publish_soil_sensor_discovery as _publish_soil_sensor_discovery
+from ha.discovery import (
+    publish_soil_sensor_discovery as _publish_soil_sensor_discovery,
+    unpublish_outlet_discovery as _unpublish_outlet_discovery,
+)
 from .command_handler import translate_command
 
 from .config import HA_OPTIONS_PATH, HA_DEVICES_PATH
@@ -31,7 +35,8 @@ _seen_topic_prefixes: set = set()
 class ProxySession:
     """Represents one active GGS Controller connection."""
 
-    def __init__(self, device_id: str, mac: str, uid: str, mqtt_client: mqtt.Client):
+    def __init__(self, device_id: str, mac: str, uid: str,
+                 mqtt_client: mqtt.Client, cache_dir: Optional[Path] = None):
         self.device_id = device_id
         self.mac = mac
         self.uid = uid
@@ -39,7 +44,89 @@ class ProxySession:
         self._upstream_writer: Optional[asyncio.StreamWriter] = None
         self._client_writer: Optional[asyncio.StreamWriter] = None
         self.device_state: Dict[str, dict] = {}  # module → current state from getDevSta
-        self.ha_overrides: Dict[str, dict] = {}  # module → {field: value} to enforce
+        self.last_nonzero_level: Dict[str, int] = {}  # module → last brightness > 0
+        # SF protocol topic-prefix learned from observed cloud→device traffic.
+        # Defaults to "CB" (Control Box) but PS5/PS10/LC may use a different
+        # value; using the wrong prefix means our injects are silently ignored.
+        self.down_topic_prefix: str = "CB"
+        # msgId → Future resolved when the device's UP response carries the
+        # same msgId. Used by request_config to await getConfigField replies.
+        self.pending_requests: Dict[str, "asyncio.Future[dict]"] = {}
+        self._msg_counter: int = 0
+        # O# → last full setConfigField block observed in cloud→device
+        # traffic; replayed on HA toggle so PS5/PS10 accept the command.
+        # Persisted to disk per device_id.
+        self._cache_dir = cache_dir
+        self.outlet_state: Dict[str, dict] = self._load_outlet_cache()
+        # Static discovery publishes outlets 1..10 unconditionally; once the
+        # controller reports its actual outlet set we unpublish the rest.
+        self._outlet_discovery_pruned: bool = False
+
+    def _cache_file(self) -> Optional[Path]:
+        if self._cache_dir is None:
+            return None
+        return self._cache_dir / "outlet_cache.json"
+
+    def _load_outlet_cache(self) -> Dict[str, dict]:
+        f = self._cache_file()
+        if f is None or not f.exists():
+            return {}
+        try:
+            payload = json.loads(f.read_text(encoding="utf-8"))
+            section = payload.get(self.device_id, {})
+            if isinstance(section, dict):
+                logger.info("[%s] Loaded %d outlet block(s) from cache",
+                            self.device_id, len(section))
+                return section
+        except Exception as e:
+            logger.warning("[%s] Failed to load outlet cache: %s", self.device_id, e)
+        return {}
+
+    def _save_outlet_cache(self) -> None:
+        f = self._cache_file()
+        if f is None:
+            return
+        try:
+            f.parent.mkdir(parents=True, exist_ok=True)
+            payload: Dict[str, dict] = {}
+            if f.exists():
+                try:
+                    payload = json.loads(f.read_text(encoding="utf-8"))
+                    if not isinstance(payload, dict):
+                        payload = {}
+                except Exception:
+                    payload = {}
+            payload[self.device_id] = self.outlet_state
+            tmp = f.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+            tmp.replace(f)
+        except Exception as e:
+            logger.warning("[%s] Failed to write outlet cache: %s", self.device_id, e)
+
+    def _next_msg_id(self) -> str:
+        self._msg_counter += 1
+        return str(int(time.time() * 1000) + self._msg_counter)
+
+    async def request_config(self, key_path: list, timeout: float = 3.0) -> dict:
+        """Send a getConfigField request to the controller and await the
+        response data. Returns the `data` dict from the UP reply, or raises
+        TimeoutError if the controller does not respond in time."""
+        msg_id = self._next_msg_id()
+        payload = {
+            "method": "getConfigField",
+            "pid": self.mac,
+            "params": {"keyPath": key_path},
+            "msgId": msg_id,
+            "uid": self.uid,
+        }
+        loop = asyncio.get_event_loop()
+        future: "asyncio.Future[dict]" = loop.create_future()
+        self.pending_requests[msg_id] = future
+        try:
+            await self.inject(payload)
+            return await asyncio.wait_for(future, timeout=timeout)
+        finally:
+            self.pending_requests.pop(msg_id, None)
 
     def set_upstream(self, writer: asyncio.StreamWriter) -> None:
         self._upstream_writer = writer
@@ -52,8 +139,9 @@ class ProxySession:
         if self._client_writer is None:
             logger.warning("[%s] inject: no device connection", self.device_id)
             return
+        topic = f"SF/GGS/{self.down_topic_prefix}/API/DOWN/{self.mac.upper().replace(':', '')}"
         raw = build_publish(
-            topic=f"SF/GGS/CB/API/DOWN/{self.mac.upper().replace(':', '')}",
+            topic=topic,
             message=json.dumps(payload, separators=(',', ':')).encode(),
         )
         try:
@@ -78,6 +166,11 @@ class MITMProxy:
         self._config_path = config_path
         self._sessions: Dict[str, ProxySession] = {}
         self._known_soil_ids: Dict[str, set] = {}  # device_id → set of seen sensor IDs
+        # Persistent cache directory for outlet blocks. HA addon stores
+        # writable state under /data so the cache survives container
+        # restarts and add-on updates.
+        cache_dir_str = config.get("proxy", {}).get("cache_dir", "/data")
+        self._cache_dir: Optional[Path] = Path(cache_dir_str) if cache_dir_str else None
 
     def build_server_ssl_ctx(self) -> ssl.SSLContext:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -167,16 +260,36 @@ class MITMProxy:
         if field.startswith("outlet_") and field[7:].isdigit():
             outlet_num = int(field[7:])
 
+        # Outlet command: prefer the passive cache when available (instant),
+        # only do the active getConfigField roundtrip when the outlet has
+        # never been observed. PS5/PS10 controllers usually ignore proxy-
+        # originated getConfigField anyway, so doing it on every toggle just
+        # wasted a 3-second timeout per click.
+        outlet_state: Optional[dict] = None
+        if outlet_num is not None:
+            ok = f"O{outlet_num}"
+            cached = session.outlet_state.get(ok)
+            if cached:
+                outlet_state = {ok: cached}
+            else:
+                try:
+                    data = await session.request_config(["outlet", ok], timeout=3.0)
+                    if isinstance(data, dict):
+                        block = data.get(ok, data)
+                        if isinstance(block, dict) and block:
+                            outlet_state = {ok: block}
+                except asyncio.TimeoutError:
+                    logger.info("[%s] getConfigField timeout for %s — no cached block either",
+                                session.device_id, ok)
+                except Exception as e:
+                    logger.warning("[%s] getConfigField error for %s: %s",
+                                   session.device_id, ok, e)
+
         payload = translate_command(field, value, session.mac, session.uid, outlet_num,
-                                    device_state=session.device_state, subfield=subfield)
+                                    device_state=session.device_state, subfield=subfield,
+                                    last_nonzero_level=session.last_nonzero_level,
+                                    outlet_state=outlet_state)
         if payload:
-            # Store override so relay_down can enforce it against server corrections
-            params = payload.get("params", {})
-            key_path = params.get("keyPath", [])
-            if len(key_path) == 2:
-                module = key_path[1]
-                module_data = params.get(module, {})
-                session.ha_overrides.setdefault(module, {}).update(module_data)
             await session.inject(payload)
 
     async def handle_client(
@@ -206,9 +319,11 @@ class MITMProxy:
                 if dev is None:
                     logger.warning("Unbekanntes Gerät client_id=%s — Session als unknown", client_id)
                     sid = f"unknown_{client_id.replace(':', '')}"
-                    s = ProxySession(sid, client_id, "", self.mqtt_client)
+                    s = ProxySession(sid, client_id, "", self.mqtt_client,
+                                     cache_dir=self._cache_dir)
                 else:
-                    s = ProxySession(dev["id"], dev["mac"], dev.get("uid", ""), self.mqtt_client)
+                    s = ProxySession(dev["id"], dev["mac"], dev.get("uid", ""),
+                                     self.mqtt_client, cache_dir=self._cache_dir)
                 s.set_upstream(upstream_writer)
                 s.set_client(client_writer)
                 self._sessions[s.device_id] = s
@@ -249,6 +364,14 @@ class MITMProxy:
                         pass
 
             async def relay_down():
+                # Forward server→device traffic unchanged. Earlier we mutated
+                # setConfigField bodies here to keep HA's last command sticky
+                # against SF cloud corrections, but that fought legitimate
+                # app/cloud commands and made the lamp uncontrollable except
+                # from bluetooth-paired sessions. Now the path is read-only
+                # and only learns: per-outlet config blocks for cache replay,
+                # and the cloud's DOWN topic prefix so injects target the
+                # same one the controller actually subscribes to.
                 buf_down = b""
                 try:
                     while True:
@@ -258,16 +381,57 @@ class MITMProxy:
                             break
                         if not data:
                             break
-                        buf_down += data
-                        pkts_down, buf_down = parse_packets(buf_down)
-                        out = _apply_overrides_to_packets(
-                            pkts_down, data, nonlocal_session[0]
-                        )
                         try:
-                            client_writer.write(out)
+                            client_writer.write(data)
                             await client_writer.drain()
                         except Exception:
                             break
+                        try:
+                            buf_down += data
+                            packets, buf_down = parse_packets(buf_down)
+                            for p in packets:
+                                if (p.packet_type == MQTT_PUBLISH and p.topic
+                                        and "/API/DOWN/" in p.topic and p.message):
+                                    sess = nonlocal_session[0]
+                                    if sess is not None:
+                                        topic_parts = p.topic.split("/")
+                                        if len(topic_parts) >= 6 and topic_parts[2]:
+                                            new_prefix = topic_parts[2]
+                                            if sess.down_topic_prefix != new_prefix:
+                                                logger.info(
+                                                    "[%s] DOWN topic prefix learned: %s (was %s)",
+                                                    sess.device_id, new_prefix,
+                                                    sess.down_topic_prefix,
+                                                )
+                                                sess.down_topic_prefix = new_prefix
+                                    try:
+                                        body = json.loads(p.message)
+                                    except Exception:
+                                        continue
+                                    if body.get("method") != "setConfigField":
+                                        continue
+                                    params = body.get("params", {})
+                                    keypath = params.get("keyPath", [])
+                                    if "outlet" in keypath:
+                                        logger.debug(
+                                            "SF→device outlet command: topic=%s keyPath=%s params=%s",
+                                            p.topic, keypath,
+                                            json.dumps(params, separators=(',', ':')),
+                                        )
+                                        sess = nonlocal_session[0]
+                                        if sess is not None:
+                                            changed = False
+                                            for k, v in params.items():
+                                                if (k.startswith("O") and k[1:].isdigit()
+                                                        and isinstance(v, dict)):
+                                                    if sess.outlet_state.get(k) != v:
+                                                        sess.outlet_state[k] = v
+                                                        changed = True
+                                            if changed:
+                                                sess._save_outlet_cache()
+                        except Exception as e:
+                            logger.debug("relay_down parse error (non-fatal): %s", e)
+                            buf_down = b""
                 finally:
                     # Signal EOF to client so relay_up unblocks if upstream disconnects first
                     try:
@@ -324,6 +488,16 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
         data = json.loads(pkt.message)
     except Exception:
         return
+
+    # Resolve any pending request whose response carries the same msgId.
+    # Done before the method gate so getConfigField (and other) replies
+    # land in their futures even though we only fully process getDevSta.
+    msg_id = data.get("msgId")
+    if msg_id and msg_id in session.pending_requests:
+        future = session.pending_requests[msg_id]
+        if not future.done():
+            future.set_result(data.get("data", {}))
+
     method = data.get("method")
     if method != "getDevSta":
         return
@@ -335,9 +509,16 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
 
     # Store current module states for use in commands
     d = data.get("data", {})
-    for module in ("light", "blower", "fan", "heater", "humidifier", "dehumidifier"):
+    for module in ("light", "light2", "blower", "fan", "heater", "humidifier", "dehumidifier"):
         if module in d:
             session.device_state[module] = d[module]
+
+    # Remember last non-zero brightness so OFF→ON restores the previous level
+    for module in ("light", "light2"):
+        if module in d:
+            lvl = d[module].get("level", d[module].get("mLevel", 0))
+            if isinstance(lvl, (int, float)) and lvl > 0:
+                session.last_nonzero_level[module] = int(lvl)
 
     # Publish discovery for newly seen soil sensor IDs
     seen = known_soil_ids.setdefault(session.device_id, set())
@@ -347,47 +528,27 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
             seen.add(sid)
             _publish_soil_sensor_discovery(mqtt_client, session.device_id, sid, device_cfg)
 
+    # Prune outlet discovery once per session: static discovery publishes
+    # 1..10 unconditionally; remove the ones the actual hardware does not
+    # have so HA stops showing ghost switches.
+    if not session._outlet_discovery_pruned:
+        outlet_block = d.get("outlet", {})
+        if isinstance(outlet_block, dict) and outlet_block:
+            present = {
+                int(k[1:]) for k in outlet_block.keys()
+                if isinstance(k, str) and k.startswith("O") and k[1:].isdigit()
+            }
+            if present:
+                for n in range(1, 11):
+                    if n not in present:
+                        _unpublish_outlet_discovery(mqtt_client, session.device_id, n)
+                logger.info("[%s] Outlet discovery pruned to %s",
+                            session.device_id, sorted(present))
+                session._outlet_discovery_pruned = True
+
     normalized = normalize_status(session.device_id, data)
     for norm_topic, value in normalized.items():
         mqtt_client.publish(norm_topic, value, retain=True)
-
-
-def _apply_overrides_to_packets(pkts, raw_data: bytes, session) -> bytes:
-    """Intercept SERVER→DEVICE packets and apply HA overrides to setConfigField."""
-    if not pkts or session is None or not session.ha_overrides:
-        return raw_data
-    modified = False
-    out_parts = []
-    for p in pkts:
-        if p.packet_type == MQTT_PUBLISH and p.message:
-            try:
-                body = json.loads(p.message)
-            except Exception:
-                body = None
-            if body and body.get("method") == "setConfigField":
-                params = body.get("params", {})
-                key_path = params.get("keyPath", [])
-                if len(key_path) == 2:
-                    module = key_path[1]
-                    if module in session.ha_overrides:
-                        params.setdefault(module, {}).update(session.ha_overrides[module])
-                        body["params"] = params
-                        new_msg = json.dumps(body, separators=(',', ':')).encode()
-                        out_parts.append(build_publish(
-                            p.topic or "", new_msg, p.qos, p.retain,
-                            p.packet_id or 1,
-                        ))
-                        logger.info("[%s] Override applied to server setConfigField: %s",
-                                    session.device_id, session.ha_overrides.get(module))
-                        modified = True
-                        continue
-        # Rebuild non-modified packets from raw payload
-        first_byte = (p.packet_type << 4) | p.flags
-        from .mqtt_parser import _encode_remaining_length
-        out_parts.append(bytes([first_byte]) + _encode_remaining_length(len(p.payload)) + p.payload)
-    if not modified:
-        return raw_data
-    return b"".join(out_parts)
 
 
 async def _tcp_relay_fallback(
