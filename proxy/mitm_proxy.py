@@ -54,6 +54,12 @@ class ProxySession:
         # setConfigField traffic carries the schedule/cycle/speeds we
         # need to merge against on HA writes.
         self.fan_state: Dict[str, dict] = {}
+        # Same idea for light: getDevSta on some firmwares omits
+        # modeType, so we cache it from observed setConfigField traffic
+        # and from our own injects. Used by the normalizer as a fallback
+        # so the HA effect dropdown stays consistent with what the
+        # controller is actually doing.
+        self.light_state: Dict[str, dict] = {}
 
     def set_upstream(self, writer: asyncio.StreamWriter) -> None:
         self._upstream_writer = writer
@@ -190,6 +196,20 @@ class MITMProxy:
                 if isinstance(blk, dict):
                     session.fan_state[k] = blk
                     for tpc, val in fan_extras_topics(session.device_id, k, blk).items():
+                        self.mqtt_client.publish(tpc, val, retain=True)
+            # Same for light — and refresh the main state/light JSON so
+            # the HA effect dropdown reflects the new mode immediately
+            # rather than waiting for the next getDevSta (which on some
+            # firmwares does not even carry modeType).
+            for k in ("light", "light2"):
+                blk = params.get(k)
+                if isinstance(blk, dict):
+                    session.light_state[k] = blk
+                    refreshed = normalize_status(
+                        session.device_id, {"data": {k: blk}},
+                        light_cache=session.light_state,
+                    )
+                    for tpc, val in refreshed.items():
                         self.mqtt_client.publish(tpc, val, retain=True)
 
     async def handle_client(
@@ -361,6 +381,12 @@ class MITMProxy:
                                                     for tpc, val in fan_extras_topics(
                                                             sess.device_id, k, params[k]).items():
                                                         self.mqtt_client.publish(tpc, val, retain=True)
+                                    if "light" in keypath or "light2" in keypath:
+                                        sess = nonlocal_session[0]
+                                        if sess is not None:
+                                            for k in ("light", "light2"):
+                                                if k in keypath and isinstance(params.get(k), dict):
+                                                    sess.light_state[k] = params[k]
                         except Exception as e:
                             # Never let logging break the relay
                             logger.debug("relay_down parse error (non-fatal): %s", e)
@@ -469,7 +495,11 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
                             session.device_id, sorted(present))
                 session._outlet_discovery_pruned = True
 
-    normalized = normalize_status(session.device_id, data)
+    normalized = normalize_status(
+        session.device_id, data,
+        light_cache=getattr(session, "light_state", None),
+        fan_cache=getattr(session, "fan_state", None),
+    )
     for norm_topic, value in normalized.items():
         mqtt_client.publish(norm_topic, value, retain=True)
 

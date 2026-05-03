@@ -89,7 +89,9 @@ def fan_extras_topics(device_id: str, prefix: str, block: Dict[str, Any]) -> Dic
     return out
 
 
-def normalize_status(device_id: str, data: Dict[str, Any]) -> Dict[str, str]:
+def normalize_status(device_id: str, data: Dict[str, Any],
+                     light_cache: Dict[str, dict] | None = None,
+                     fan_cache: Dict[str, dict] | None = None) -> Dict[str, str]:
     result: Dict[str, str] = {}
     d = data.get("data", data)
 
@@ -120,9 +122,16 @@ def normalize_status(device_id: str, data: Dict[str, Any]) -> Dict[str, str]:
             "effect": _LIGHT_MODES.get(lc_mode, str(lc_mode)),
         })
 
+    # Light blocks: getDevSta only carries {on, level} for some firmwares —
+    # no modeType. Falling back to a hard-coded default would flip HA's
+    # effect dropdown to the wrong mode whenever the controller sends a
+    # status update. Prefer the cached modeType from observed setConfigField
+    # traffic instead.
+    lc = light_cache or {}
+
     light = d.get("light", {})
     if light:
-        mode = light.get("modeType", 1)
+        mode = light.get("modeType", lc.get("light", {}).get("modeType", 0))
         result[f"spiderfarmer/{device_id}/state/light"] = json.dumps({
             "state": _on_off(light.get("on", light.get("mOnOff", 0))),
             "brightness": light.get("level", light.get("mLevel", 0)),
@@ -131,7 +140,7 @@ def normalize_status(device_id: str, data: Dict[str, Any]) -> Dict[str, str]:
 
     light2 = d.get("light2", {})
     if light2:
-        mode2 = light2.get("modeType", 1)
+        mode2 = light2.get("modeType", lc.get("light2", {}).get("modeType", 0))
         result[f"spiderfarmer/{device_id}/state/light2"] = json.dumps({
             "state": _on_off(light2.get("on", light2.get("mOnOff", 0))),
             "brightness": light2.get("level", light2.get("mLevel", 0)),
