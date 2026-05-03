@@ -326,6 +326,17 @@ class MITMProxy:
                                             p.topic, keypath,
                                             json.dumps(params, separators=(',', ':')),
                                         )
+                                    # Fan feature-parity capture: log every
+                                    # cloud-side setConfigField for fan/blower
+                                    # at INFO level on this branch so we can
+                                    # reverse-engineer the SF App's fan
+                                    # settings screen field-by-field.
+                                    if "fan" in keypath or "blower" in keypath:
+                                        logger.info(
+                                            "[FAN-CAPTURE] keyPath=%s params=%s",
+                                            keypath,
+                                            json.dumps(params, separators=(',', ':')),
+                                        )
                         except Exception as e:
                             # Never let logging break the relay
                             logger.debug("relay_down parse error (non-fatal): %s", e)

@@ -331,6 +331,12 @@ class MITMProxy:
                                             p.topic, keypath,
                                             json.dumps(params, separators=(',', ':')),
                                         )
+                                    if "fan" in keypath or "blower" in keypath:
+                                        logger.info(
+                                            "[FAN-CAPTURE] keyPath=%s params=%s",
+                                            keypath,
+                                            json.dumps(params, separators=(',', ':')),
+                                        )
                         except Exception as e:
                             logger.debug("relay_down parse error (non-fatal): %s", e)
                             buf_down = b""
