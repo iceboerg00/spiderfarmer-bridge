@@ -14,6 +14,7 @@ export class DeviceTab extends LitElement {
   @property({ type: String }) deviceType: DeviceType = 'light';
   @property({ attribute: false }) extras: Record<string, string> = {};
   @property({ type: Number }) speedMax = 10;
+  @property({ type: Number }) sliderMin = 0;
   /** Live value while the user drags the slider; null when not dragging. */
   @state() private _draggingLevel: number | null = null;
 
@@ -323,7 +324,8 @@ export class DeviceTab extends LitElement {
           @click=${this._onToggle}></button>
       </div>
       <div class="slider-row">
-        <input type="range" class="slider" min="0" max="100" step=${sliderStep}
+        <input type="range" class="slider"
+          min=${this.sliderMin} max="100" step=${sliderStep}
           .value=${String(displayLevel)}
           style="--ggs-fill: ${displayLevel}"
           @input=${this._onSliderDrag}

@@ -5,9 +5,29 @@ import { discoverDevices, type DiscoveredDevice } from './lib/discovery';
 import type { HomeAssistant, LovelaceCardConfig } from './lib/ha-types';
 import './components/device-tab';
 
+interface SliderMinConfig {
+  light?: number;
+  fan_circulation?: number;
+  fan_exhaust?: number;
+}
+
 interface GgsCardConfig extends LovelaceCardConfig {
   device_id?: string;
+  /**
+   * Per-device-type minimum value the slider can drag to (0-100).
+   * Useful when the controller has a hardware floor (e.g. fan exhaust
+   * physically refuses to spin below 25 %, light won't dim below 11 %).
+   * Setting it makes the slider start visually at the floor instead of 0.
+   */
+  slider_min?: SliderMinConfig;
 }
+
+const SLIDER_MIN_KEY: Record<string, keyof SliderMinConfig> = {
+  'light.ggs_light_1': 'light',
+  'light.ggs_light_2': 'light',
+  'fan.ggs_fan_circulation': 'fan_circulation',
+  'fan.ggs_fan_exhaust': 'fan_exhaust',
+};
 
 @customElement('ggs-card')
 export class GgsCard extends LitElement {
@@ -139,6 +159,9 @@ export class GgsCard extends LitElement {
 
     const active = this._activeDevice(devices)!;
     const speedMax = active.entity === 'fan.ggs_fan_exhaust' ? 100 : 10;
+    const sliderMinKey = SLIDER_MIN_KEY[active.entity];
+    const sliderMin =
+      (sliderMinKey && this._config?.slider_min?.[sliderMinKey]) ?? 0;
 
     return html`
       <ha-card>
@@ -159,7 +182,8 @@ export class GgsCard extends LitElement {
             .entity=${active.entity}
             .deviceType=${active.type}
             .extras=${active.extras}
-            .speedMax=${speedMax}></ggs-device-tab>
+            .speedMax=${speedMax}
+            .sliderMin=${sliderMin}></ggs-device-tab>
         </div>
       </ha-card>
     `;
