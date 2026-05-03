@@ -20,10 +20,20 @@ export class GgsCard extends LitElement {
     css`
       :host {
         display: block;
-        background: var(--ha-card-background, var(--card-background-color, #1c1c1e));
-        border-radius: var(--ha-card-border-radius, var(--ggs-radius));
+        height: 100%;
+      }
+      ha-card {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
         padding: 16px;
-        box-shadow: var(--ha-card-box-shadow, none);
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+      ggs-device-tab {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
       }
       .tabs {
         display: flex;
@@ -70,17 +80,20 @@ export class GgsCard extends LitElement {
   }
 
   /**
-   * HA section view uses this to know which sizes the card supports
-   * when the user drags the resize handle. Lets the card breathe at
-   * 4-12 columns wide and grow vertically with content.
+   * HA's section view uses this to know which sizes the card supports
+   * when the user drags the resize handle. The keys here are the
+   * documented public API (grid_rows/grid_columns + grid_min/max_*),
+   * NOT the older `columns`/`rows`/`min_columns`/etc. names — those
+   * silently no-op in newer HA versions.
    */
-  getGridOptions() {
+  getLayoutOptions() {
     return {
-      columns: 6,
-      rows: 'auto' as const,
-      min_columns: 4,
-      max_columns: 12,
-      min_rows: 3,
+      grid_rows: 6,
+      grid_columns: 6,
+      grid_min_rows: 3,
+      grid_max_rows: 12,
+      grid_min_columns: 4,
+      grid_max_columns: 12,
     };
   }
 
@@ -103,39 +116,41 @@ export class GgsCard extends LitElement {
     const devices = this._devices();
 
     if (this._config?.device_id && devices.length === 0) {
-      return html`<div class="empty">
+      return html`<ha-card><div class="empty">
         Device '${this._config.device_id}' not found in this Home Assistant.
-      </div>`;
+      </div></ha-card>`;
     }
 
     if (devices.length === 0) {
-      return html`<div class="empty">
+      return html`<ha-card><div class="empty">
         No GGS devices found. Make sure the SpiderBridge addon is running and
         the controller has been discovered.
-      </div>`;
+      </div></ha-card>`;
     }
 
     const active = this._activeDevice(devices)!;
     const speedMax = active.entity === 'fan.ggs_fan_exhaust' ? 100 : 10;
 
     return html`
-      <div class="tabs" role="tablist">
-        ${devices.map(
-          (d) => html`<button
-            class=${'tab' + (d.entity === active.entity ? ' active' : '')}
-            role="tab"
-            aria-selected=${d.entity === active.entity}
-            @click=${() => (this._activeEntity = d.entity)}>
-            ${d.name}
-          </button>`,
-        )}
-      </div>
-      <ggs-device-tab
-        .hass=${this.hass}
-        .entity=${active.entity}
-        .deviceType=${active.type}
-        .extras=${active.extras}
-        .speedMax=${speedMax}></ggs-device-tab>
+      <ha-card>
+        <div class="tabs" role="tablist">
+          ${devices.map(
+            (d) => html`<button
+              class=${'tab' + (d.entity === active.entity ? ' active' : '')}
+              role="tab"
+              aria-selected=${d.entity === active.entity}
+              @click=${() => (this._activeEntity = d.entity)}>
+              ${d.name}
+            </button>`,
+          )}
+        </div>
+        <ggs-device-tab
+          .hass=${this.hass}
+          .entity=${active.entity}
+          .deviceType=${active.type}
+          .extras=${active.extras}
+          .speedMax=${speedMax}></ggs-device-tab>
+      </ha-card>
     `;
   }
 }
