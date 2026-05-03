@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import ssl
+import time
 from typing import Dict, Optional
 
 import paho.mqtt.client as mqtt
@@ -161,6 +162,50 @@ class MITMProxy:
             logger.info("config.yaml aktualisiert.")
         except Exception as e:
             logger.error("Fehler beim Speichern von config.yaml: %s", e)
+
+    async def config_poll_loop(self) -> None:
+        """Periodically inject getConfigField requests for light/light2/fan/
+        blower into every active controller session. If the controller
+        honors them, the responses come back through relay_up, get parsed
+        by _process_publish, and refresh the light_state / fan_state caches
+        without any user interaction. If the controller ignores them
+        (firmware-dependent), this is harmless.
+
+        Interval is configurable via proxy.config_poll_interval_sec
+        (default 600 = 10 minutes). Set to 0 to disable."""
+        interval = int(self.config.get("proxy", {}).get("config_poll_interval_sec", 600))
+        if interval <= 0:
+            logger.info("Config poll disabled (interval=%s)", interval)
+            return
+        logger.info("Config poll loop started, interval=%ds", interval)
+        # Initial delay so the first poll happens after sessions have had
+        # time to establish. Otherwise we'd inject into nothing.
+        await asyncio.sleep(min(60, interval))
+        while True:
+            try:
+                for sess in list(self._sessions.values()):
+                    for keypath in (["device", "light"], ["device", "light2"],
+                                    ["device", "fan"], ["device", "blower"]):
+                        try:
+                            await sess.inject({
+                                "method": "getConfigField",
+                                "pid": sess.mac,
+                                "params": {"keyPath": keypath},
+                                "msgId": str(int(time.time() * 1000)),
+                                "uid": sess.uid,
+                            })
+                        except Exception as e:
+                            logger.debug("config poll inject failed for %s: %s",
+                                         keypath, e)
+                        # Space out so we don't flood the controller in one burst
+                        await asyncio.sleep(0.5)
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                logger.info("Config poll loop stopped")
+                break
+            except Exception as e:
+                logger.warning("Config poll loop error: %s", e)
+                await asyncio.sleep(30)
 
     async def handle_command(self, topic: str, value: str) -> None:
         """Handle an incoming HA command from local Mosquitto."""
@@ -448,8 +493,15 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
     except Exception:
         return
     method = data.get("method")
-    if method != "getDevSta":
+    # Accept any UP message that carries a data block — getDevSta is the
+    # main one, but getConfigField responses (when the controller honors
+    # them) come through here too. Setup-Acks without payload data fall
+    # through harmlessly because their "data" dict has no module blocks.
+    if method not in ("getDevSta", "getConfigField"):
         return
+    if method == "getConfigField":
+        logger.info("[CONFIG-RESP] data=%s",
+                    json.dumps(data.get("data", {}), separators=(',', ':'))[:500])
 
     # Keep UID up to date from controller messages
     uid = data.get("uid", "")
@@ -460,7 +512,19 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
     d = data.get("data", {})
     for module in ("light", "light2", "blower", "fan", "heater", "humidifier", "dehumidifier"):
         if module in d:
-            session.device_state[module] = d[module]
+            # Merge instead of replace — getDevSta on some firmwares carries
+            # only {on, level} for light/fan, which would wipe cached fields
+            # (modeType, schedule, etc) we need to keep.
+            session.device_state.setdefault(module, {}).update(d[module])
+    # Also feed light/fan caches from rich UP messages (getConfigField
+    # responses, full setConfigField echoes). Same merge semantics so
+    # minimal getDevSta echoes don't clobber the cached schedule/cycle.
+    for module in ("light", "light2"):
+        if module in d and isinstance(d[module], dict):
+            session.light_state.setdefault(module, {}).update(d[module])
+    for module in ("fan", "blower"):
+        if module in d and isinstance(d[module], dict):
+            session.fan_state.setdefault(module, {}).update(d[module])
 
     # Remember last non-zero brightness so OFF→ON restores the previous level
     for module in ("light", "light2"):
