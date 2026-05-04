@@ -75,8 +75,8 @@ Pick from the existing patterns:
 | RGB / brightness          | `light`     | `_light` (json schema)         |
 | Read-only metric          | `sensor`    | `_sensor`                      |
 
-If the new screen has multiple settings groups (the SF App's "Lampe
-Einstellungen" splits into Schedule, PPFD, Temperaturschutz), use
+If the new screen has multiple settings groups (the SF App's Light
+settings screen splits into Schedule, PPFD, Temperature Protection), use
 **sub-devices** so HA renders them as separate cards. See
 `_settings_subdevice()` and how `_fan_extras()` / `_light_extras()` use
 it: each card gets its own `identifiers` and a `via_device` pointing at

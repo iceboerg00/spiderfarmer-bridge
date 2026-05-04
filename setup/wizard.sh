@@ -2,7 +2,8 @@
 # Interactive config wizard — writes config/config.yaml
 set -euo pipefail
 
-# Stdin auf Terminal umleiten — nötig wenn das Script per Pipe (curl | bash) gestartet wird
+# Redirect stdin to the controlling terminal — needed when the script
+# is started via a pipe (curl | bash).
 exec </dev/tty
 
 INSTALL_DIR="${1:-/opt/spiderfarmer-bridge}"
@@ -16,50 +17,50 @@ echo " /        \  |_> >  / /_/ \  ___/|  | \/ \_\ \  | \/  / /_/ |/ /_/  >  ___
 echo "/_______  /   __/|__\____ |\___  >__|  |___  /__|  |__\____ |\___  / \___  >"
 echo "        \/|__|           \/    \/          \/              \/_____/      \/  "
 echo ""
-echo "  Setup-Assistent"
-echo "  ──────────────────────────────────────────────────"
+echo "  Setup wizard"
+echo "  --------------------------------------------------"
 echo ""
-echo "  Bitte die folgenden Fragen beantworten."
-echo "  Leere Eingabe übernimmt den Standardwert [in Klammern]."
+echo "  Answer the questions below."
+echo "  Empty input keeps the default value [in brackets]."
 echo ""
 
-# ── Hotspot ──────────────────────────────────────────────────────────────────
-echo "── WLAN-Hotspot ────────────────────────────────"
-read -rp "  SSID (WLAN-Name für GGS Controller) [SF-Bridge]: " ssid
+# -- Hotspot ------------------------------------------------------------------
+echo "-- Wi-Fi hotspot ----------------------------"
+read -rp "  SSID (Wi-Fi name for the GGS Controller) [SF-Bridge]: " ssid
 ssid="${ssid:-SF-Bridge}"
 
 while true; do
-  read -rsp "  WLAN-Passwort (mind. 8 Zeichen) [changeme123]: " password
+  read -rsp "  Wi-Fi password (min. 8 characters) [changeme123]: " password
   echo ""
   password="${password:-changeme123}"
   if [[ ${#password} -ge 8 ]]; then
     break
   fi
-  echo "  Fehler: Passwort muss mindestens 8 Zeichen haben."
+  echo "  Error: password must be at least 8 characters."
 done
 
-read -rp "  WLAN-Interface [wlan0]: " iface
+read -rp "  Wi-Fi interface [wlan0]: " iface
 iface="${iface:-wlan0}"
 
-read -rp "  Hotspot-IP-Adresse [192.168.10.1]: " hotspot_ip
+read -rp "  Hotspot IP address [192.168.10.1]: " hotspot_ip
 hotspot_ip="${hotspot_ip:-192.168.10.1}"
 
 echo ""
 
-# ── Gerät ─────────────────────────────────────────────────────────────────────
-# Gerätename ist hartkodiert "GGS" — sorgt für einheitliche Entity-IDs
-# (light.ggs_light_1, fan.ggs_fan_exhaust, text.ggs_light_1_ppfd_start, …)
-# über alle Sub-Devices hinweg. Multi-Device-Setups können den Namen
-# nachträglich in config/config.yaml unter devices[].friendly_name anpassen.
+# -- Device -------------------------------------------------------------------
+# Device name is hardcoded to "GGS" — keeps entity IDs consistent
+# (light.ggs_light_1, fan.ggs_fan_exhaust, text.ggs_light_1_ppfd_start, ...)
+# across all sub-devices. Multi-device setups can edit the name afterwards
+# in config/config.yaml under devices[].friendly_name.
 friendly_name="GGS"
 
-# ── Internes Passwort (kein User-Input nötig, zufällig generieren) ────────────
+# -- Internal password (no user input — random) -------------------------------
 bridge_pass="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24 || true)"
 if [[ -z "$bridge_pass" ]]; then
   bridge_pass="bridge_$(date +%s)"
 fi
 
-# ── Config schreiben ──────────────────────────────────────────────────────────
+# -- Write the config ---------------------------------------------------------
 mkdir -p "$(dirname "$CONFIG")"
 cat > "$CONFIG" <<EOF
 hotspot:
@@ -82,17 +83,17 @@ mosquitto:
   port: 1883
 
 devices:
-  - mac: "AABBCCDDEEFF"   # Wird beim ersten Verbinden automatisch erkannt
+  - mac: "AABBCCDDEEFF"   # auto-detected on first connect
     type: "CB"
     id: "ggs_1"
     uid: ""
     friendly_name: "$friendly_name"
 EOF
 
-echo "✓ Konfiguration gespeichert: $CONFIG"
+echo "[ok] config written: $CONFIG"
 echo ""
 echo "  SSID:        $ssid"
-echo "  Hotspot-IP:  $hotspot_ip"
+echo "  Hotspot IP:  $hotspot_ip"
 echo "  Interface:   $iface"
-echo "  Gerätename:  $friendly_name"
+echo "  Device name: $friendly_name"
 echo ""

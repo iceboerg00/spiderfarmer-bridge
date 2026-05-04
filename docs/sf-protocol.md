@@ -1,8 +1,8 @@
 # Spider Farmer GGS Protocol — Reverse-Engineered Notes
 
 What we have learned about the SF cloud ↔ controller protocol while building
-this bridge. Distilled from packet captures, the bundled `schedule-4-real`
-proxy (PyInstaller-decompiled), and lots of trial and error.
+this bridge. Distilled from packet captures, observed cloud traffic, and
+lots of trial and error.
 
 This is **not** an official spec. Fields and modeType numbers may vary
 between firmware versions. Treat as a working reference, not a guarantee.
@@ -82,10 +82,10 @@ on length.
 
 ### `modeType`
 
-| Value | App label |
+| Value | Label |
 |---|---|
-| 0 | Manueller Modus |
-| 1 | Zeitfenstermodus |
+| 0 | Manual |
+| 1 | Schedule |
 | 12 | PPFD |
 
 Higher numbers presumably exist for cycle/sunrise modes — not yet
@@ -124,7 +124,7 @@ confirmed.
 | `lastAutoModeType` | mirror of modeType (purpose unclear; copy along) |
 | `darkTemp` | °C threshold for dimming. **0.0 = disabled** |
 | `offTemp` | °C threshold for hard-off. **0.0 = disabled** |
-| `timePeriod[]` | Schedule periods for Zeitfenstermodus |
+| `timePeriod[]` | Schedule periods for Schedule mode |
 | `timePeriod[i].startTime` / `endTime` | seconds since midnight, % 86400 |
 | `timePeriod[i].weekmask` | bitfield, bit 0=Mon … bit 6=Sun. 127 = all days |
 | `timePeriod[i].brightness` | target brightness during this period |
@@ -148,20 +148,20 @@ under `data.light`. Our normalizer handles both.
 
 Confirmed by clicking through every dropdown option in the SF App:
 
-| Value | App label |
+| Value | Label |
 |---|---|
-| 0 | Manueller Modus |
-| 1 | Zeitfenstermodus |
-| 2 | Zyklusmodus |
-| 3 | Umweltmodus — Nur Temperatur |
-| 4 | Umweltmodus — Nur Luftfeuchtigkeit |
-| 7 | Umweltmodus — Temperatur priorisieren |
-| 8 | Umweltmodus — Feuchtigkeit priorisieren |
-| 13 | Umweltmodus — Temperatur & Luftfeuchtigkeit |
+| 0 | Manual |
+| 1 | Schedule |
+| 2 | Cycle |
+| 3 | Environment — Temperature only |
+| 4 | Environment — Humidity only |
+| 7 | Environment — Prioritize temperature |
+| 8 | Environment — Prioritize humidity |
+| 13 | Environment — Temperature & humidity |
 
-The "Betriebsmodus" sub-dropdown inside Umweltmodus is **not** a separate
-field — it just maps to one of those modeType numbers. So the fan has
-8 distinct modes total in `modeType`.
+The "Submode" picker inside Environment mode is **not** a separate field
+— it maps to one of those modeType numbers. The fan has 8 distinct modes
+total in `modeType`.
 
 ### Field map
 
@@ -184,16 +184,16 @@ field — it just maps to one of those modeType numbers. So the fan has
 
 | Field | Meaning |
 |---|---|
-| `mOnOff` | Schalter (on/off) |
-| `mLevel` | Gang in Manueller Modus (1-10), reflects current active speed |
-| `maxSpeed` | Gang during scheduled active periods (Zeitfenster / Zyklus). 1-10 |
-| `minSpeed` | Standby-Geschwindigkeit during inactive periods. **0 = Aus** |
-| `shakeLevel` | Oszillation level, 0-10 |
-| `natural` | Natürlicher Wind, 0/1 |
-| `timePeriod[0]` | Zeitfenstermodus schedule (start/end in seconds) |
-| `cycleTime.startTime` | Zyklusmodus: time of day when the cycle starts |
-| `cycleTime.openDur` | Zyklusmodus: run time per cycle, seconds |
-| `cycleTime.closeDur` | Zyklusmodus: off time per cycle, seconds |
+| `mOnOff` | On/off |
+| `mLevel` | Speed level in Manual mode (1-10), reflects the current active speed |
+| `maxSpeed` | Speed during scheduled active periods (Schedule / Cycle). 1-10 |
+| `minSpeed` | Standby speed during inactive periods. **0 = Off** |
+| `shakeLevel` | Oscillation level, 0-10 |
+| `natural` | Natural Wind, 0/1 |
+| `timePeriod[0]` | Schedule mode schedule (start/end in seconds) |
+| `cycleTime.startTime` | Cycle mode: time of day when the cycle starts |
+| `cycleTime.openDur` | Cycle mode: run time per cycle, seconds |
+| `cycleTime.closeDur` | Cycle mode: off time per cycle, seconds |
 | `cycleTime.times` | Number of executions per day. **Hard-capped at 100** by the controller, regardless of `openDur+closeDur` |
 
 ---
@@ -287,15 +287,14 @@ otherwise our proxy never sees the change.
 |---|---|
 | `outlet` | yes (just `{modeType, mOnOff}` is enough) |
 | `light` / `light2` | partial mostly works for direct on/off, but mode changes need `timePeriod` populated |
-| `fan` / `blower` | ditto — mode changes need the relevant block (`timePeriod` for Zeitfenster, `cycleTime` for Zyklus) |
+| `fan` / `blower` | ditto — mode changes need the relevant block (`timePeriod` for Schedule, `cycleTime` for Cycle) |
 | `heater` / `humidifier` / `dehumidifier` | minimal `{mOnOff}` works |
 
 ### `getConfigField` from proxy
 
 Our proxy-injected `getConfigField` requests **time out** consistently —
-the controller does not respond. The schedule-4-real proxy hits the same
-behavior (its JS catches the timeout silently and falls back to a minimal
-payload).
+the controller doesn't respond when the request comes from us instead
+of the SF cloud.
 
 This is why our HA writes use a **cache** populated from observed cloud
 setConfigField traffic, rather than fetching live state via
@@ -311,5 +310,3 @@ that module.
 - `proxy/command_handler.py` — translates HA commands into setConfigField
 - `proxy/mitm_proxy.py` — TLS termination, prefix learning, cache fill
 - `ha/discovery.py` — HA MQTT Discovery configs (entities, sub-devices)
-- `tools/decomp-output/` — local-only reverse-engineered notes from the
-  schedule-4-real binary (gitignored)

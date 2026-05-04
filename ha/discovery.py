@@ -345,7 +345,7 @@ def _light_extras(device_id: str, module: str, friendly: str, cfg: dict) -> list
 def _fan_extras(device_id: str, module: str, friendly: str, cfg: dict,
                 speed_max: int = 10, oscillation: bool = True,
                 natural_wind: bool = True) -> list:
-    """Sub-device entities mirroring the SF App's Lüfter-Einstellungen screen
+    """Sub-device entities mirroring the SF App's fan settings screen
     for one fan/blower. Three sub-devices linked via via_device:
       - Schedule Mode: schedule_start, schedule_end + Speed, Standby Speed
         [+ Oscillation] [+ Natural Wind]

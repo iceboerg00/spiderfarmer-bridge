@@ -3,11 +3,11 @@
     "step": {
       "user": {
         "title": "SpiderBridge",
-        "description": "Spider Farmer GGS Controller wird automatisch verbunden. Stelle sicher dass das SpiderBridge Add-on läuft."
+        "description": "The Spider Farmer GGS Controller will be connected automatically. Make sure the SpiderBridge add-on is running."
       }
     },
     "abort": {
-      "already_configured": "SpiderBridge ist bereits eingerichtet."
+      "already_configured": "SpiderBridge is already configured."
     }
   }
 }

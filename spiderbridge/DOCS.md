@@ -29,13 +29,14 @@ On first connect, the GGS Controller is auto-detected. All entities appear autom
 | `password` | `changeme123` | Wi-Fi password — **change this before use** |
 | `channel` | `6` | 2.4 GHz channel (1–11, GGS Controller is 2.4 GHz only) |
 | `hotspot_ip` | `192.168.10.1` | Gateway IP of the hotspot |
-| `device_name` | `Spider Farmer GGS` | Friendly name shown in Home Assistant |
+
+The HA device name is hardcoded to `GGS` so entity IDs are consistent (`light.ggs_light_1`, `fan.ggs_fan_circulation`, …). Required for the bundled Lovelace card to discover them.
 
 ## Available Entities
 
 | Type | Entities |
 |------|----------|
-| Sensor | Air Temperature, Humidity, VPD |
+| Sensor | Air Temperature, Humidity, VPD, CO₂, PPFD |
 | Sensor | Soil Temperature / Humidity / EC (average + per sensor) |
 | Light | Light 1 + Light 2 (on/off, brightness, mode) |
 | Fan | Fan Exhaust (on/off + speed 0–100%) |
@@ -44,6 +45,19 @@ On first connect, the GGS Controller is auto-detected. All entities appear autom
 | Switch | Outlet 1–10 |
 
 Soil sensors are auto-discovered by hardware ID on first connect.
+
+Plus mode-specific settings as their own entities — schedule brightness, PPFD target, fan cycle run-time, environment submode, etc. Every setting available in the SF App is also available in HA.
+
+## Lovelace Card
+
+The add-on bundles a custom Lovelace card (tabs per device + mode dropdown + matching settings) and registers it as a Lovelace resource on first start. After the add-on starts and Home Assistant Core has been restarted:
+
+1. Hard-refresh your browser (Ctrl+F5).
+2. Edit a dashboard → "+ Add Card" → search "Spider Farmer".
+
+```yaml
+type: custom:ggs-card
+```
 
 ## Hotspot Toggle
 

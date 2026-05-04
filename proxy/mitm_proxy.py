@@ -143,10 +143,10 @@ class MITMProxy:
                 dev["mac"] = mac_clean
                 logger.info(
                     "┌─────────────────────────────────────────────┐\n"
-                    "│  🕷  SpiderBridge — Gerät erkannt           │\n"
+                    "│  🕷  SpiderBridge — device detected         │\n"
                     "│  MAC: %-38s  │\n"
                     "│  ID:  %-38s  │\n"
-                    "│  config.yaml wird aktualisiert...           │\n"
+                    "│  updating config.yaml...                    │\n"
                     "└─────────────────────────────────────────────┘",
                     mac_clean, dev.get("friendly_name", dev["id"]),
                 )
@@ -283,7 +283,7 @@ class MITMProxy:
                     # Try auto-detecting: replace placeholder MAC with real one
                     dev = self._auto_detect_mac(client_id)
                 if dev is None:
-                    logger.warning("Unbekanntes Gerät client_id=%s — Session als unknown", client_id)
+                    logger.warning("Unknown device client_id=%s — session marked as unknown", client_id)
                     sid = f"unknown_{client_id.replace(':', '')}"
                     s = ProxySession(sid, client_id, "", self.mqtt_client)
                 else:

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Bootstrap: Repo von GitHub laden und installieren
-# Verwendung: bash <(curl -sSL https://raw.githubusercontent.com/iceboerg00/spiderfarmer-bridge/master/setup/bootstrap.sh)
+# Bootstrap: pull the repo from GitHub and install it.
+# Usage: bash <(curl -sSL https://raw.githubusercontent.com/iceboerg00/spiderfarmer-bridge/master/setup/bootstrap.sh)
 set -euo pipefail
 
 INSTALL_DIR="/opt/spiderfarmer-bridge"
@@ -15,36 +15,36 @@ echo "/_______  /   __/|__\____ |\___  >__|  |___  /__|  |__\____ |\___  / \___ 
 echo "        \/|__|           \/    \/          \/              \/_____/      \/  "
 echo ""
 echo "  Spider Farmer GGS → Home Assistant"
-echo "  Bootstrap — lädt Repo und richtet alles ein"
+echo "  Bootstrap — clones the repo and runs the installer"
 echo ""
 
-# Root prüfen
+# Require root
 if [[ $EUID -ne 0 ]]; then
-  echo "Fehler: Bitte als root ausführen: sudo bash <(curl ...)"
+  echo "Error: please run as root: sudo bash <(curl ...)"
   exit 1
 fi
 
-# git installieren falls nötig
+# Install git if missing
 if ! command -v git &>/dev/null; then
-  echo "[bootstrap] Installiere git..."
+  echo "[bootstrap] Installing git..."
   apt-get update -qq
   apt-get install -y -qq git
 fi
 
-# Repo klonen oder aktualisieren
+# Clone or update the repo
 if [[ -d "$INSTALL_DIR/.git" ]]; then
-  echo "[bootstrap] Repo bereits vorhanden — aktualisiere..."
+  echo "[bootstrap] Repo already present — updating..."
   git -C "$INSTALL_DIR" pull --ff-only
 else
-  echo "[bootstrap] Klone Repository nach $INSTALL_DIR..."
+  echo "[bootstrap] Cloning repository to $INSTALL_DIR..."
   git clone "$REPO" "$INSTALL_DIR"
 fi
 
-echo "[bootstrap] Repository bereit."
+echo "[bootstrap] Repository ready."
 echo ""
 
-# Wizard ausführen (interaktive Konfiguration)
+# Run the interactive wizard
 bash "$INSTALL_DIR/setup/wizard.sh" "$INSTALL_DIR"
 
-# Installer ausführen
+# Run the installer
 bash "$INSTALL_DIR/setup/install.sh"
