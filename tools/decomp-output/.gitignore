@@ -1,5 +1,0 @@
-# Reverse-engineered output of a third-party binary
-# (schedule-4-real/proxy/spiderproxy by Eddie Piazza).
-# Kept locally for reference, not committed.
-*.txt
-*.pyc
