@@ -38,6 +38,30 @@ export class DeviceTab extends LitElement {
       }
       .name { font-size: 18px; font-weight: 600; color: var(--ggs-fg); }
       .sub { color: var(--ggs-fg-muted); font-size: 13px; }
+      /* Save button — same pill silhouette as ggs-switch (24px tall,
+         pill-shaped, accent fill), only with text instead of a toggle
+         thumb so it reads as a one-shot action. */
+      .save {
+        height: 24px;
+        padding: 0 14px;
+        border-radius: 999px;
+        border: none;
+        background: var(--accent, var(--ggs-fan-accent));
+        color: #ffffff;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: opacity 0.15s ease;
+      }
+      .save:hover { opacity: 0.85; }
+      .save:active { opacity: 0.7; }
+      .save:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.4);
+      }
       .slider-row {
         display: flex; align-items: center; gap: var(--ggs-spacing);
         background: var(--ggs-bg); border-radius: var(--ggs-radius);
@@ -356,6 +380,8 @@ export class DeviceTab extends LitElement {
           <div class="name">${name}</div>
           <div class="sub">${this._onOff} · ${this._currentMode}</div>
         </div>
+        <button class="save" @click=${this._onSaveMode}
+          title="Re-apply current mode to commit pending edits">Save</button>
         <ggs-switch
           .checked=${this._onOff === 'ON'}
           .label=${'Toggle ' + name}
@@ -382,8 +408,7 @@ export class DeviceTab extends LitElement {
         .deviceType=${this.deviceType}
         .mode=${this._currentMode}
         .extras=${this.extras}
-        .speedMax=${this.speedMax}
-        @save-mode=${this._onSaveMode}></ggs-settings-panel>
+        .speedMax=${this.speedMax}></ggs-settings-panel>
       ${this._renderTempProtection()}
     `;
   }
