@@ -36,10 +36,40 @@ export class SettingsPanel extends LitElement {
         text-align: center;
         padding: 16px 0;
       }
+      .save-row {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: var(--ggs-spacing);
+        padding-top: var(--ggs-spacing);
+        border-top: 1px solid var(--ggs-divider);
+      }
+      .save {
+        background: var(--accent, var(--ggs-tab-active));
+        color: #ffffff;
+        border: none;
+        border-radius: var(--ggs-radius-sm);
+        padding: 10px 20px;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.15s ease;
+      }
+      .save:hover { opacity: 0.85; }
+      .save:active { opacity: 0.7; }
     `,
   ];
 
-  override render() {
+  private _onSave = () => {
+    // Bubble up so device-tab can re-apply the current mode. Some
+    // controllers treat per-field setConfigField writes as preview-only
+    // and only commit when a full block (with modeType) lands — this
+    // mirrors the "save" button in the SF App.
+    this.dispatchEvent(
+      new CustomEvent('save-mode', { bubbles: true, composed: true }),
+    );
+  };
+
+  private _renderBody() {
     if (this.mode === 'Manual') {
       // Light has no settings in Manual mode. Fan exposes oscillation +
       // natural_wind only when those entities are actually present
@@ -87,6 +117,20 @@ export class SettingsPanel extends LitElement {
     }
 
     return html`<div class="placeholder">Unknown mode: ${this.mode}</div>`;
+  }
+
+  override render() {
+    // Save button stays visible for every mode (incl. Manual) — pressing
+    // it re-applies the current mode, which the SF controller treats as
+    // a commit of any pending sub-field edits (schedule times, cycle
+    // intervals, etc.).
+    const body = this._renderBody();
+    return html`
+      <div class="body">${body}</div>
+      <div class="save-row">
+        <button class="save" @click=${this._onSave}>Save</button>
+      </div>
+    `;
   }
 }
 

@@ -260,6 +260,28 @@ export class DeviceTab extends LitElement {
     }
   };
 
+  private _onSaveMode = () => {
+    // Re-fire the current mode to push a fresh setConfigField with
+    // modeType — the SF controller commits any sub-field edits (schedule
+    // times, cycle intervals, etc.) made since the last mode change.
+    // Without this, per-field writes are sometimes treated as preview
+    // state and never take effect until the user presses save in the
+    // SF App.
+    const mode = this._currentMode;
+    if (!mode) return;
+    if (this.deviceType === 'light') {
+      this.hass.callService('light', 'turn_on', {
+        entity_id: this.entity,
+        effect: mode,
+      });
+    } else {
+      this.hass.callService('fan', 'set_preset_mode', {
+        entity_id: this.entity,
+        preset_mode: mode,
+      });
+    }
+  };
+
   private _setNum(slot: string, value: number) {
     const id = this.extras[slot];
     if (!id) return;
@@ -360,7 +382,8 @@ export class DeviceTab extends LitElement {
         .deviceType=${this.deviceType}
         .mode=${this._currentMode}
         .extras=${this.extras}
-        .speedMax=${this.speedMax}></ggs-settings-panel>
+        .speedMax=${this.speedMax}
+        @save-mode=${this._onSaveMode}></ggs-settings-panel>
       ${this._renderTempProtection()}
     `;
   }
