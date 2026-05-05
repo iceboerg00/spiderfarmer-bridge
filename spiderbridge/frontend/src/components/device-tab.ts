@@ -157,10 +157,15 @@ export class DeviceTab extends LitElement {
   private get _currentMode(): string {
     const s = this._state;
     if (!s) return '';
-    if (this.deviceType === 'light') {
-      return (s.attributes?.effect as string) ?? 'Manual';
-    }
-    return (s.attributes?.preset_mode as string) ?? 'Manual';
+    // Don't fall back to 'Manual' — when the bridge omits effect/preset_mode
+    // (e.g. during a schedule off-phase before the modeType cache is seeded)
+    // we'd render the Manual placeholder and hide all schedule settings.
+    // An empty string surfaces 'Unknown mode' in the settings panel instead,
+    // which preserves the user's ability to re-pick a mode from the dropdown.
+    const attr = this.deviceType === 'light'
+      ? (s.attributes?.effect as string | undefined)
+      : (s.attributes?.preset_mode as string | undefined);
+    return attr ?? '';
   }
 
   private get _level(): number {
@@ -178,8 +183,39 @@ export class DeviceTab extends LitElement {
   }
 
   private _onToggle = () => {
-    const domain = this.deviceType === 'light' ? 'light' : 'fan';
-    this.hass.callService(domain, 'toggle', { entity_id: this.entity });
+    // Mirror the SF App: any manual toggle flips the device into Manual
+    // mode. Without forcing Manual here the card keeps showing the
+    // previous mode (e.g. Schedule) while the controller has already
+    // switched, so subsequent edits in the Schedule sub-panel silently
+    // no-op because the device is no longer in that mode.
+    const turningOn = this._onOff !== 'ON';
+    if (this.deviceType === 'light') {
+      if (turningOn) {
+        // Combine on + Manual into a single command so the bridge
+        // publishes {state: ON, effect: Manual} in one frame.
+        this.hass.callService('light', 'turn_on', {
+          entity_id: this.entity,
+          effect: 'Manual',
+        });
+      } else {
+        // Set Manual first while still on, then turn off — brief
+        // overlap is fine, the schedule was about to stop driving
+        // brightness anyway.
+        this.hass.callService('light', 'turn_on', {
+          entity_id: this.entity,
+          effect: 'Manual',
+        });
+        this.hass.callService('light', 'turn_off', { entity_id: this.entity });
+      }
+    } else {
+      this.hass.callService('fan', 'toggle', { entity_id: this.entity });
+      // set_preset_mode is independent of on/off, so we can fire it
+      // unconditionally without re-toggling state.
+      this.hass.callService('fan', 'set_preset_mode', {
+        entity_id: this.entity,
+        preset_mode: 'Manual',
+      });
+    }
   };
 
   /** Fires continuously while dragging — keep state in sync, do NOT call HA. */
@@ -191,15 +227,23 @@ export class DeviceTab extends LitElement {
   private _onSliderCommit = (e: Event) => {
     const value = +(e.target as HTMLInputElement).value;
     this._draggingLevel = null;
+    // Same SF App behavior as _onToggle: any manual brightness/speed
+    // change kicks the device out of Schedule/Cycle/Environment into
+    // Manual. Force Manual here so the card stays in sync.
     if (this.deviceType === 'light') {
       this.hass.callService('light', 'turn_on', {
         entity_id: this.entity,
         brightness_pct: value,
+        effect: 'Manual',
       });
     } else {
       this.hass.callService('fan', 'set_percentage', {
         entity_id: this.entity,
         percentage: value,
+      });
+      this.hass.callService('fan', 'set_preset_mode', {
+        entity_id: this.entity,
+        preset_mode: 'Manual',
       });
     }
   };

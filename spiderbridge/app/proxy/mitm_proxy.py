@@ -263,7 +263,11 @@ class MITMProxy:
             for k in ("light", "light2"):
                 blk = params.get(k)
                 if isinstance(blk, dict):
-                    session.light_state[k] = blk
+                    # Merge, not overwrite — partial setConfigField frames
+                    # (e.g. just on/off or brightness) must not clobber a
+                    # previously cached modeType, otherwise the next status
+                    # update falls back to Manual mid-schedule.
+                    session.light_state.setdefault(k, {}).update(blk)
                     refreshed = normalize_status(
                         session.device_id, {"data": {k: blk}},
                         light_cache=session.light_state,
@@ -454,7 +458,11 @@ class MITMProxy:
                                         if sess is not None:
                                             for k in ("light", "light2"):
                                                 if k in keypath and isinstance(params.get(k), dict):
-                                                    sess.light_state[k] = params[k]
+                                                    # Merge, not overwrite —
+                                                    # see same fix in the
+                                                    # injected setConfigField
+                                                    # path above.
+                                                    sess.light_state.setdefault(k, {}).update(params[k])
                                                     # Also push the per-field
                                                     # extras so HA settings
                                                     # entities populate even
