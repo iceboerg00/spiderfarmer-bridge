@@ -255,8 +255,14 @@ class MITMProxy:
                     # previously cached modeType, otherwise the next status
                     # update falls back to Manual mid-schedule.
                     session.light_state.setdefault(k, {}).update(blk)
+                    # Pass the FULL merged cache to the normalizer, not the
+                    # partial blk — otherwise editing a sub-field like
+                    # schedule.timeOnStart republishes state/light with
+                    # state=OFF, brightness=0 (because blk has no on/level)
+                    # and clobbers the live light state in HA.
+                    merged = session.light_state[k]
                     refreshed = normalize_status(
-                        session.device_id, {"data": {k: blk}},
+                        session.device_id, {"data": {k: merged}},
                         light_cache=session.light_state,
                     )
                     for tpc, val in refreshed.items():
