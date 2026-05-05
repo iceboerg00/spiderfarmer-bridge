@@ -331,6 +331,17 @@ def translate_command(
                 return None
         elif subfield == "natural_wind":
             block["natural"] = _onoff(value)
+        # Force timePeriod[0].enabled = 1 on every fan write, regardless
+        # of subfield. Observed bug: when the cache was seeded from a
+        # getDevSta that omitted `enabled`, our optimistic re-publish (or
+        # the Save button re-firing preset_mode) sent timePeriod without
+        # enabled — the controller treated the schedule as disabled and
+        # the trigger never fired until the user pressed Save in the SF
+        # App, whose payload always includes enabled=1.
+        tp = block.get("timePeriod")
+        if isinstance(tp, list) and tp and isinstance(tp[0], dict):
+            tp[0].setdefault("enabled", 1)
+            tp[0].setdefault("weekmask", 127)
         return _build(mac, uid, "device", field, block)
 
     # ── Blower on/off ─────────────────────────────────────────────────────────
