@@ -179,14 +179,19 @@ def normalize_status(device_id: str, data: Dict[str, Any],
     # level — `data.brightness` + `data.mode` instead of nested under
     # `data.light.{level, modeType}`. Map it to the same `light` topic so
     # HA's light entity works without a separate code path.
-    if "brightness" in d and "mode" in d and "light" not in d:
+    if "brightness" in d and "light" not in d:
         lc_brightness = d.get("brightness", 0)
-        lc_mode = d.get("mode", 1)
-        result[f"spiderfarmer/{device_id}/state/light"] = json.dumps({
+        lc_payload = {
             "state": _on_off(1 if isinstance(lc_brightness, (int, float)) and lc_brightness > 0 else 0),
             "brightness": lc_brightness,
-            "effect": _LIGHT_MODES.get(lc_mode, str(lc_mode)),
-        })
+        }
+        # Only set effect if the frame actually carries a mode — partial
+        # status frames without `mode` would otherwise default to Manual
+        # and clobber HA's effect attribute mid-schedule.
+        if "mode" in d:
+            lc_mode = d["mode"]
+            lc_payload["effect"] = _LIGHT_MODES.get(lc_mode, str(lc_mode))
+        result[f"spiderfarmer/{device_id}/state/light"] = json.dumps(lc_payload)
 
     # Light blocks: getDevSta only carries {on, level} for some firmwares —
     # no modeType. Falling back to a hard-coded default would flip HA's
@@ -197,12 +202,18 @@ def normalize_status(device_id: str, data: Dict[str, Any],
 
     light = d.get("light", {})
     if light:
-        mode = light.get("modeType", lc.get("light", {}).get("modeType", 0))
-        result[f"spiderfarmer/{device_id}/state/light"] = json.dumps({
+        mode = light.get("modeType", lc.get("light", {}).get("modeType"))
+        payload = {
             "state": _on_off(light.get("on", light.get("mOnOff", 0))),
             "brightness": light.get("level", light.get("mLevel", 0)),
-            "effect": _LIGHT_MODES.get(mode, str(mode)),
-        })
+        }
+        # Only emit effect when modeType is actually known (live or cached).
+        # A hard-coded default would flip HA's effect dropdown to Manual
+        # whenever a getDevSta arrives before the cache is seeded, e.g.
+        # mid-schedule off-phase right after bridge restart.
+        if mode is not None:
+            payload["effect"] = _LIGHT_MODES.get(mode, str(mode))
+        result[f"spiderfarmer/{device_id}/state/light"] = json.dumps(payload)
         # Merge cached schedule/ppfd/temp fields into the block we hand to
         # light_extras_topics — getDevSta on its own only carries on/level
         # and would yield empty entities until the next setConfigField.
@@ -211,12 +222,14 @@ def normalize_status(device_id: str, data: Dict[str, Any],
 
     light2 = d.get("light2", {})
     if light2:
-        mode2 = light2.get("modeType", lc.get("light2", {}).get("modeType", 0))
-        result[f"spiderfarmer/{device_id}/state/light2"] = json.dumps({
+        mode2 = light2.get("modeType", lc.get("light2", {}).get("modeType"))
+        payload2 = {
             "state": _on_off(light2.get("on", light2.get("mOnOff", 0))),
             "brightness": light2.get("level", light2.get("mLevel", 0)),
-            "effect": _LIGHT_MODES.get(mode2, str(mode2)),
-        })
+        }
+        if mode2 is not None:
+            payload2["effect"] = _LIGHT_MODES.get(mode2, str(mode2))
+        result[f"spiderfarmer/{device_id}/state/light2"] = json.dumps(payload2)
         merged2 = {**lc.get("light2", {}), **light2}
         result.update(light_extras_topics(device_id, "light2", merged2))
 

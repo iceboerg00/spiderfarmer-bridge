@@ -250,9 +250,19 @@ class MITMProxy:
             for k in ("light", "light2"):
                 blk = params.get(k)
                 if isinstance(blk, dict):
-                    session.light_state[k] = blk
+                    # Merge, not overwrite — partial setConfigField frames
+                    # (e.g. just on/off or brightness) must not clobber a
+                    # previously cached modeType, otherwise the next status
+                    # update falls back to Manual mid-schedule.
+                    session.light_state.setdefault(k, {}).update(blk)
+                    # Pass the FULL merged cache to the normalizer, not the
+                    # partial blk — otherwise editing a sub-field like
+                    # schedule.timeOnStart republishes state/light with
+                    # state=OFF, brightness=0 (because blk has no on/level)
+                    # and clobbers the live light state in HA.
+                    merged = session.light_state[k]
                     refreshed = normalize_status(
-                        session.device_id, {"data": {k: blk}},
+                        session.device_id, {"data": {k: merged}},
                         light_cache=session.light_state,
                     )
                     for tpc, val in refreshed.items():
@@ -441,7 +451,11 @@ class MITMProxy:
                                         if sess is not None:
                                             for k in ("light", "light2"):
                                                 if k in keypath and isinstance(params.get(k), dict):
-                                                    sess.light_state[k] = params[k]
+                                                    # Merge, not overwrite —
+                                                    # see same fix in the
+                                                    # injected setConfigField
+                                                    # path above.
+                                                    sess.light_state.setdefault(k, {}).update(params[k])
                                                     # Also push the per-field
                                                     # extras so HA settings
                                                     # entities populate even

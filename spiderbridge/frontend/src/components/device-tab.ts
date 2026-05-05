@@ -38,6 +38,30 @@ export class DeviceTab extends LitElement {
       }
       .name { font-size: 18px; font-weight: 600; color: var(--ggs-fg); }
       .sub { color: var(--ggs-fg-muted); font-size: 13px; }
+      /* Save button — same pill silhouette as ggs-switch (24px tall,
+         pill-shaped, accent fill), only with text instead of a toggle
+         thumb so it reads as a one-shot action. */
+      .save {
+        height: 24px;
+        padding: 0 14px;
+        border-radius: 999px;
+        border: none;
+        background: var(--accent, var(--ggs-fan-accent));
+        color: #ffffff;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: opacity 0.15s ease;
+      }
+      .save:hover { opacity: 0.85; }
+      .save:active { opacity: 0.7; }
+      .save:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.4);
+      }
       .slider-row {
         display: flex; align-items: center; gap: var(--ggs-spacing);
         background: var(--ggs-bg); border-radius: var(--ggs-radius);
@@ -157,10 +181,15 @@ export class DeviceTab extends LitElement {
   private get _currentMode(): string {
     const s = this._state;
     if (!s) return '';
-    if (this.deviceType === 'light') {
-      return (s.attributes?.effect as string) ?? 'Manual';
-    }
-    return (s.attributes?.preset_mode as string) ?? 'Manual';
+    // Don't fall back to 'Manual' — when the bridge omits effect/preset_mode
+    // (e.g. during a schedule off-phase before the modeType cache is seeded)
+    // we'd render the Manual placeholder and hide all schedule settings.
+    // An empty string surfaces 'Unknown mode' in the settings panel instead,
+    // which preserves the user's ability to re-pick a mode from the dropdown.
+    const attr = this.deviceType === 'light'
+      ? (s.attributes?.effect as string | undefined)
+      : (s.attributes?.preset_mode as string | undefined);
+    return attr ?? '';
   }
 
   private get _level(): number {
@@ -178,8 +207,39 @@ export class DeviceTab extends LitElement {
   }
 
   private _onToggle = () => {
-    const domain = this.deviceType === 'light' ? 'light' : 'fan';
-    this.hass.callService(domain, 'toggle', { entity_id: this.entity });
+    // Mirror the SF App: any manual toggle flips the device into Manual
+    // mode. Without forcing Manual here the card keeps showing the
+    // previous mode (e.g. Schedule) while the controller has already
+    // switched, so subsequent edits in the Schedule sub-panel silently
+    // no-op because the device is no longer in that mode.
+    const turningOn = this._onOff !== 'ON';
+    if (this.deviceType === 'light') {
+      if (turningOn) {
+        // Combine on + Manual into a single command so the bridge
+        // publishes {state: ON, effect: Manual} in one frame.
+        this.hass.callService('light', 'turn_on', {
+          entity_id: this.entity,
+          effect: 'Manual',
+        });
+      } else {
+        // Set Manual first while still on, then turn off — brief
+        // overlap is fine, the schedule was about to stop driving
+        // brightness anyway.
+        this.hass.callService('light', 'turn_on', {
+          entity_id: this.entity,
+          effect: 'Manual',
+        });
+        this.hass.callService('light', 'turn_off', { entity_id: this.entity });
+      }
+    } else {
+      this.hass.callService('fan', 'toggle', { entity_id: this.entity });
+      // set_preset_mode is independent of on/off, so we can fire it
+      // unconditionally without re-toggling state.
+      this.hass.callService('fan', 'set_preset_mode', {
+        entity_id: this.entity,
+        preset_mode: 'Manual',
+      });
+    }
   };
 
   /** Fires continuously while dragging — keep state in sync, do NOT call HA. */
@@ -191,15 +251,23 @@ export class DeviceTab extends LitElement {
   private _onSliderCommit = (e: Event) => {
     const value = +(e.target as HTMLInputElement).value;
     this._draggingLevel = null;
+    // Same SF App behavior as _onToggle: any manual brightness/speed
+    // change kicks the device out of Schedule/Cycle/Environment into
+    // Manual. Force Manual here so the card stays in sync.
     if (this.deviceType === 'light') {
       this.hass.callService('light', 'turn_on', {
         entity_id: this.entity,
         brightness_pct: value,
+        effect: 'Manual',
       });
     } else {
       this.hass.callService('fan', 'set_percentage', {
         entity_id: this.entity,
         percentage: value,
+      });
+      this.hass.callService('fan', 'set_preset_mode', {
+        entity_id: this.entity,
+        preset_mode: 'Manual',
       });
     }
   };
@@ -208,6 +276,28 @@ export class DeviceTab extends LitElement {
     const mode = e.detail;
     if (this.deviceType === 'light') {
       this.hass.callService('light', 'turn_on', { entity_id: this.entity, effect: mode });
+    } else {
+      this.hass.callService('fan', 'set_preset_mode', {
+        entity_id: this.entity,
+        preset_mode: mode,
+      });
+    }
+  };
+
+  private _onSaveMode = () => {
+    // Re-fire the current mode to push a fresh setConfigField with
+    // modeType — the SF controller commits any sub-field edits (schedule
+    // times, cycle intervals, etc.) made since the last mode change.
+    // Without this, per-field writes are sometimes treated as preview
+    // state and never take effect until the user presses save in the
+    // SF App.
+    const mode = this._currentMode;
+    if (!mode) return;
+    if (this.deviceType === 'light') {
+      this.hass.callService('light', 'turn_on', {
+        entity_id: this.entity,
+        effect: mode,
+      });
     } else {
       this.hass.callService('fan', 'set_preset_mode', {
         entity_id: this.entity,
@@ -290,6 +380,8 @@ export class DeviceTab extends LitElement {
           <div class="name">${name}</div>
           <div class="sub">${this._onOff} · ${this._currentMode}</div>
         </div>
+        <button class="save" @click=${this._onSaveMode}
+          title="Re-apply current mode to commit pending edits">Save</button>
         <ggs-switch
           .checked=${this._onOff === 'ON'}
           .label=${'Toggle ' + name}

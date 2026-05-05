@@ -57,7 +57,7 @@ export class ModeDropdown extends LitElement {
       <div class="wrapper">
         <select @change=${this._onChange}>
           ${!inOptions && this.value
-            ? html`<option value=${this.value} selected>${this.value}</option>`
+            ? html`<option value=${this.value} ?selected=${true}>${this.value}</option>`
             : null}
           ${this.options.map(
             (opt) =>
@@ -66,6 +66,17 @@ export class ModeDropdown extends LitElement {
         </select>
       </div>
     `;
+  }
+
+  // Force the <select>'s value to track this.value after every render —
+  // setting `selected` on options handles the initial paint, but once the
+  // user has interacted with the dropdown the displayed value sticks and
+  // a programmatic change (e.g. slider forcing Manual) goes ignored.
+  override updated() {
+    const select = this.shadowRoot?.querySelector('select');
+    if (select && select.value !== this.value) {
+      select.value = this.value;
+    }
   }
 }
 
