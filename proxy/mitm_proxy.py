@@ -557,9 +557,13 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
         if module in d and isinstance(d[module], dict):
             session.fan_state.setdefault(module, {}).update(d[module])
 
-    # Remember last non-zero brightness so OFF→ON restores the previous level
-    for module in ("light", "light2"):
-        if module in d:
+    # Remember last non-zero brightness/speed so OFF→ON restores the
+    # previous level for lights AND fans/blowers — without this the
+    # toggle handler in command_handler.py defaults to a hard-coded
+    # level (5/50/100) on first ON after an OFF, ignoring the user's
+    # last setting.
+    for module in ("light", "light2", "fan", "blower"):
+        if module in d and isinstance(d[module], dict):
             lvl = d[module].get("level", d[module].get("mLevel", 0))
             if isinstance(lvl, (int, float)) and lvl > 0:
                 session.last_nonzero_level[module] = int(lvl)

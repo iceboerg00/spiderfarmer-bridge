@@ -347,9 +347,16 @@ def translate_command(
     # ── Blower on/off ─────────────────────────────────────────────────────────
     if field == "blower" and subfield is None:
         cur = state.get("blower", {})
+        on = _onoff(value)
+        level = int(cur.get("level", cur.get("mLevel", 0)))
+        # Same OFF→ON restore as light: controller reports level=0 while
+        # off; fall back to the last observed non-zero speed so toggling
+        # back on doesn't bring the blower up at speed 0 (no airflow).
+        if on == 1 and level == 0:
+            level = int(last_levels.get(field, 50))
         return _build(mac, uid, "device", "blower", {
-            "mOnOff": _onoff(value),
-            "mLevel": cur.get("level", cur.get("mLevel", 50)),
+            "mOnOff": on,
+            "mLevel": level,
             "natural": 0,
             "timePeriod": _TIME_PERIOD,
         })
@@ -371,9 +378,13 @@ def translate_command(
     # ── Fan on/off ────────────────────────────────────────────────────────────
     if field == "fan" and subfield is None:
         cur = state.get("fan", {})
+        on = _onoff(value)
+        level = int(cur.get("level", cur.get("mLevel", 0)))
+        if on == 1 and level == 0:
+            level = int(last_levels.get(field, 5))
         return _build(mac, uid, "device", "fan", {
-            "mOnOff": _onoff(value),
-            "mLevel": cur.get("level", cur.get("mLevel", 5)),
+            "mOnOff": on,
+            "mLevel": level,
             "shakeLevel": cur.get("shakeLevel", 0),
             "natural": 0,
             "timePeriod": _TIME_PERIOD,
