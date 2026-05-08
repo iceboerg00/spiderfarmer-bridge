@@ -1,0 +1,26 @@
+#!/bin/sh
+# Register the addon-local Mosquitto broker with Supervisor so HA's MQTT
+# integration offers a one-click "configure SpiderBridge as MQTT broker"
+# notification. Replaces the old custom_component shim (deleted in 1.6.0).
+#
+# Supervisor exposes the service at http://supervisor/services/mqtt and
+# accepts the broker connection details as JSON. With host_network=true
+# the addon shares the host's network namespace, so 127.0.0.1 from the
+# Core container's perspective is the same loopback Mosquitto binds to.
+set -e
+
+API="http://supervisor/services/mqtt"
+AUTH="Authorization: Bearer ${SUPERVISOR_TOKEN}"
+
+# Anonymous for now — gated by the LAN already (Mosquitto only listens on
+# 127.0.0.1 + the hotspot subnet). Auth is tracked separately in #7.
+PAYLOAD='{"host":"127.0.0.1","port":1883,"ssl":false,"protocol":"3.1.1","username":"","password":""}'
+
+if curl -fsS -X POST -H "$AUTH" -H "Content-Type: application/json" \
+        -d "$PAYLOAD" "$API" >/dev/null; then
+  echo "[publish-mqtt] registered MQTT broker with Supervisor"
+else
+  # Non-fatal — the addon still works if HA already has its MQTT
+  # integration configured. The notification is just nicer UX.
+  echo "[publish-mqtt] failed to register with Supervisor (already configured?) — continuing"
+fi

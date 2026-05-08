@@ -121,19 +121,16 @@ Click **Save** (top right).
 2. Enable **Watchdog** and **Start on boot** (so it comes back up automatically after a reboot).
 3. Open the **Log** tab — you should see lines like `Hotspot enabled`, `Proxy listening on 0.0.0.0:8883`. If you see errors, jump to [Troubleshooting](#troubleshooting).
 
-### Step 5 — Restart Home Assistant Core
+### Step 5 — Configure the MQTT integration
 
-**Settings → System → Restart** → **Restart Home Assistant Core**.
+After the addon starts, Home Assistant shows a notification:
+**"SpiderBridge offers an MQTT broker — configure?"**
 
-This is required for HA to pick up the SpiderBridge integration that the addon installed.
+Click it → **Submit**. That's it. Internally this configures HA's standard MQTT integration to point at the addon's local Mosquitto, and MQTT Discovery handles the rest — every Spider Farmer device the bridge sees becomes a HA entity automatically.
 
-### Step 6 — Activate the integration
+> If you don't see the notification: **Settings → Devices & services → Add Integration → MQTT → Submit** (HA prefills the broker details from the addon).
 
-1. **Settings → Devices & services**.
-2. Bottom right **+ Add Integration** → type **"SpiderBridge"** in the search → click it.
-3. A single click on **Submit** — no extra input needed.
-
-### Step 7 — Connect the GGS Controller
+### Step 6 — Connect the GGS Controller
 
 In the Spider Farmer app on your phone, switch the GGS Controller's Wi-Fi over to the network you created in Step 3 (the SSID + password from there). On first connect the MAC is auto-detected.
 
@@ -147,7 +144,7 @@ In the addon log you should see something like:
 
 Entities appear in HA from that moment on — usually within 10-20 seconds.
 
-### Step 8 — Add the card to a dashboard
+### Step 7 — Add the card to a dashboard
 
 1. Hard-refresh the browser — **Ctrl+F5** (Mac: Cmd+Shift+R) — so HA loads the freshly installed card.
 2. Open a dashboard → **Edit Dashboard** → **+ Add Card** → search "Spider Farmer" → done.
@@ -269,8 +266,9 @@ For the card after an update: HACS → "Spider Farmer GGS Card" → Update, or m
 - Hard-refresh the browser — **Ctrl+F5**.
 - HA → Settings → Dashboards → ⋮ → **Resources** → check that `/local/ggs-card.js` is listed as a JavaScript Module. If not: add it manually (URL `/local/ggs-card.js`, type "JavaScript Module").
 
-### Integration disappears after addon update (Option A)
-- After every addon update that touches the integration: **Settings → System → Restart Home Assistant Core**.
+### MQTT integration not configured after addon install (Option A)
+- HA usually shows a "SpiderBridge offers an MQTT broker" notification right after the addon starts. If you missed it: **Settings → Devices & services → + Add Integration → MQTT** and submit; the broker details are prefilled.
+- If you previously had the addon installed in 1.5.x or earlier, remove the old "SpiderBridge" custom integration entry under **Settings → Devices & services** before adding MQTT — the old shim is gone in 1.6.0.
 
 ---
 
@@ -330,7 +328,6 @@ spiderfarmer-bridge/
 │   ├── Dockerfile         # multi-stage build that includes the frontend
 │   ├── app/               # Python code for the container
 │   ├── frontend/          # Lovelace card (TypeScript + Lit)
-│   ├── integration/       # HA custom integration (auto-installed by the addon)
 │   └── rootfs/            # s6 service scripts + auto-install of the card
 ├── hacs.json              # HACS Frontend repo metadata
 └── repository.yaml        # HA custom-repository metadata

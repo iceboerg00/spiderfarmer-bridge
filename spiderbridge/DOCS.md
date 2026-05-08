@@ -13,12 +13,10 @@ SpiderBridge creates a Wi-Fi hotspot on your Raspberry Pi, intercepts the encryp
 
 1. Configure the add-on options (see below)
 2. Start the add-on
-3. **Restart Home Assistant Core** — Settings → System → Restart
-4. Go to **Settings → Devices & Services → Add Integration → SpiderBridge**
-5. Click **Add** — no further configuration needed
-6. Connect the GGS Controller to the configured Wi-Fi SSID
+3. Home Assistant shows a notification: **"SpiderBridge offers an MQTT broker — configure?"** — click it and submit. (If you missed it: **Settings → Devices & Services → Add Integration → MQTT** — broker details are prefilled.)
+4. Connect the GGS Controller to the configured Wi-Fi SSID
 
-On first connect, the GGS Controller is auto-detected. All entities appear automatically under one device.
+On first connect, the GGS Controller is auto-detected. All entities appear automatically under one device via MQTT Discovery.
 
 ## Options
 
@@ -73,8 +71,9 @@ Set `hotspot_enabled: false` if your GGS Controller connects via an existing rou
 - Accessories (heater, humidifier, etc.) only appear after the controller reports their state for the first time
 - Restart the add-on to trigger re-discovery
 
-**Integration not showing after update**
-- Restart Home Assistant Core after each add-on update — the add-on installs the integration on every start, a Core restart is needed to pick up changes
+**MQTT integration not configured after install**
+- Look for the "SpiderBridge offers an MQTT broker" notification in HA — clicking it sets up the MQTT integration in one step.
+- Upgrading from 1.5.x or earlier: remove the old "SpiderBridge" custom integration entry under Settings → Devices & Services first; the integration was replaced by standard MQTT Discovery in 1.6.0.
 
 ## Notes
 
