@@ -96,6 +96,14 @@ Once installed and the resource is registered, just add it as a card:
 
 ```yaml
 type: custom:ggs-card
+device_id: ggs_1
+layout_options:
+  grid_columns: 48
+  grid_rows: 12
+slider_min:
+  light: 11
+  fan_circulation: 10
+  fan_exhaust: 25
 ```
 
 If you have a single GGS Controller, that's it. Multi-controller / hardware quirks? See **Configuration** below.
