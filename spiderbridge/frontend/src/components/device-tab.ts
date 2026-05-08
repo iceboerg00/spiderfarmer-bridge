@@ -21,8 +21,15 @@ export class DeviceTab extends LitElement {
   /** Last non-empty effect/preset_mode we observed. Used as fallback
    *  when HA briefly clears the attribute mid-transition (e.g. schedule
    *  off-phase) so the dropdown doesn't flash to empty + the settings
-   *  panel doesn't render the "Unknown mode" placeholder. */
+   *  panel doesn't render the "Unknown mode" placeholder. Persisted to
+   *  localStorage per entity so a card reload during an off-phase
+   *  (when the live attribute is already empty) still recovers the
+   *  user's last-seen mode. */
   @state() private _stickyMode = '';
+
+  private get _stickyKey(): string {
+    return `ggs-card.stickyMode:${this.entity}`;
+  }
 
   static override styles = [
     themeVariables,
@@ -331,6 +338,21 @@ export class DeviceTab extends LitElement {
     return id ? (this.hass.states[id]?.state ?? '') : '';
   }
 
+  override connectedCallback() {
+    super.connectedCallback();
+    // Restore the last seen mode from localStorage so a fresh card
+    // load during a schedule off-phase (when HA has no live effect
+    // attribute) doesn't flash "Unknown mode" until the bridge
+    // republishes.
+    try {
+      const saved = window.localStorage.getItem(this._stickyKey);
+      if (saved) this._stickyMode = saved;
+    } catch {
+      // localStorage may be disabled (private mode, sandboxed iframe);
+      // not fatal — sticky just won't survive reload.
+    }
+  }
+
   override updated() {
     this.style.setProperty('--accent', this._accent);
     // Clear the post-commit override once HA's state catches up.
@@ -339,7 +361,8 @@ export class DeviceTab extends LitElement {
     if (this._draggingLevel !== null && this._level === this._draggingLevel) {
       this._draggingLevel = null;
     }
-    // Capture the latest non-empty mode for the sticky fallback.
+    // Capture the latest non-empty mode for the sticky fallback +
+    // persist so the next card load survives an off-phase.
     const s = this._state;
     if (s) {
       const live = this.deviceType === 'light'
@@ -347,6 +370,11 @@ export class DeviceTab extends LitElement {
         : (s.attributes?.preset_mode as string | undefined);
       if (live && live !== this._stickyMode) {
         this._stickyMode = live;
+        try {
+          window.localStorage.setItem(this._stickyKey, live);
+        } catch {
+          // ignore — see connectedCallback
+        }
       }
     }
   }
