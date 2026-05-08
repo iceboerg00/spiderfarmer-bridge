@@ -57,6 +57,14 @@ Three install paths (see **[Card install guide](spiderbridge/frontend/README.md)
 In a dashboard:
 ```yaml
 type: custom:ggs-card
+device_id: ggs_1
+layout_options:
+  grid_columns: 48
+  grid_rows: 12
+slider_min:
+  light: 11
+  fan_circulation: 10
+  fan_exhaust: 25
 ```
 
 ---
