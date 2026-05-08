@@ -66,7 +66,7 @@ slider_min:
   fan_circulation: 10
   fan_exhaust: 25
 ```
-Note: the slider_min defaults reflect typical SF GGS hardware. If your setup has different floors (e.g. a different exhaust fan that already spins at 15 %), adjust the values or set them to 0.
+> **Note:** the `slider_min` defaults reflect typical SF GGS hardware. If your setup has different floors (e.g. a different exhaust fan that already spins at 15 %), adjust the values or set them to `0`.
 
 ---
 
