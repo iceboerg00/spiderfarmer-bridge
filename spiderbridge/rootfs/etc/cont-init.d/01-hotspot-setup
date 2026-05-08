@@ -39,7 +39,13 @@ printf 'interface=%s\nbind-interfaces\ndhcp-range=%s.10,%s.50,255.255.255.0,24h\
     "${IFACE}" "${SUBNET}" "${SUBNET}" "${IP}" > /tmp/spiderbridge/dnsmasq.conf
 
 iptables -t nat -F PREROUTING 2>/dev/null || true
-iptables -t nat -A PREROUTING -i "${IFACE}" -p tcp --dport 8883 -j REDIRECT --to-ports 8883
+# Redirect controller traffic from the standard MQTT-TLS port (8883)
+# to our internal proxy port (18883). Avoids a port conflict with
+# Mosquitto's own 8883 TLS listener — both can bind 0.0.0.0 because
+# host_network: true. Only traffic arriving via wlan0 (i.e. from the
+# GGS controller) is rewritten; LAN clients reaching the host's 8883
+# still hit Mosquitto.
+iptables -t nat -A PREROUTING -i "${IFACE}" -p tcp --dport 8883 -j REDIRECT --to-ports 18883
 # ip_forward: try sysctl first; the shell-level redirect to /proc fails
 # noisily on read-only /proc (no SYS_ADMIN), so wrap the fallback in a
 # subshell whose stderr is silenced. NAT REDIRECT in PREROUTING actually

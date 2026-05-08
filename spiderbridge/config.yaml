@@ -1,6 +1,6 @@
 name: SpiderBridge
 slug: spiderbridge
-version: "1.5.1"
+version: "1.6.4"
 description: Spider Farmer GGS Controller → Home Assistant via MQTT Discovery
 url: https://github.com/iceboerg00/spiderfarmer-bridge
 arch:
@@ -16,6 +16,18 @@ privileged:
   - NET_RAW
 map:
   - config:rw
+# Required so cont-init/03-install-card can hit /core/api/lovelace/resources
+# with the Supervisor-provided token — without this Supervisor returns 401
+# and the card registration silently no-ops.
+homeassistant_api: true
+# Tell Supervisor we provide an MQTT broker — this triggers HA's MQTT
+# integration to offer a one-click setup notification on first install.
+# Replaces the previous custom_component shim, which duplicated MQTT
+# Discovery and was missing modern HA feature flags (cf. issue #5).
+discovery:
+  - mqtt
+services:
+  - mqtt:provide
 options:
   hotspot_enabled: true
   ssid: "SF-Bridge"

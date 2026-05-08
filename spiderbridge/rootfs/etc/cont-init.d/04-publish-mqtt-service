@@ -1,0 +1,29 @@
+#!/usr/bin/with-contenv bashio
+# Register the addon-local Mosquitto broker with Supervisor so HA's MQTT
+# integration offers a one-click "configure SpiderBridge as MQTT broker"
+# notification. Replaces the old custom_component shim (deleted in 1.6.0).
+#
+# Uses bashio::services.publish — the same helper the official Mosquitto
+# add-on uses. Doing this with raw curl + $SUPERVISOR_TOKEN consistently
+# returned 401 on Supervisor's /services/mqtt endpoint; bashio handles
+# the auth and JSON envelope correctly.
+
+bashio::log.info "Publishing MQTT broker config to Supervisor..."
+
+if bashio::services.available "mqtt"; then
+    bashio::log.info "Supervisor already has an MQTT service configured — leaving it alone."
+    exit 0
+fi
+
+# Anonymous for now — Mosquitto only listens on the addon-local interface
+# and the hotspot subnet. Auth is tracked separately in #7.
+bashio::services.publish "mqtt" \
+    "host=127.0.0.1" \
+    "port=1883" \
+    "ssl=false" \
+    "username=" \
+    "password=" \
+    "protocol=3.1.1" \
+    || bashio::log.warning "Could not publish MQTT broker — HA may already have it configured."
+
+bashio::log.info "MQTT broker published."

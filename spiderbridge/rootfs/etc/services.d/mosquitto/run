@@ -1,3 +1,13 @@
-#!/bin/sh
-echo "[INFO] Starting mosquitto"
+#!/usr/bin/with-contenv bashio
+# If Supervisor already has an MQTT service available — typically the
+# official Mosquitto addon — don't start our own broker. Two brokers
+# would fight over port 1883 (host_network=true) and our s6 service
+# would crash-loop forever ("Error: Address in use"). Keep the s6 unit
+# alive with a sleep so s6 doesn't keep restarting it.
+if bashio::services.available "mqtt"; then
+    bashio::log.info "External MQTT broker available via Supervisor — skipping local Mosquitto."
+    exec sleep infinity
+fi
+
+bashio::log.info "Starting local Mosquitto..."
 exec mosquitto -c /tmp/spiderbridge/mosquitto.conf

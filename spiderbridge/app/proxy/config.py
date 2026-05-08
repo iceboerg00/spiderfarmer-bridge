@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 HA_OPTIONS_PATH = "/data/options.json"
 HA_DEVICES_PATH = "/data/devices.yaml"
+HA_MQTT_PATH = "/data/mqtt.json"  # written by cont-init/02b-mqtt-discovery
 
 
 # Hardcoded so HA generates entity_ids with a "ggs_*" prefix consistently
@@ -38,7 +39,32 @@ def _load_ha_devices() -> list:
     return _default_devices()
 
 
+def _load_ha_mqtt() -> dict:
+    """Return MQTT broker config written by cont-init/02b-mqtt-discovery.
+
+    When Supervisor has an external MQTT service (e.g. the official
+    Mosquitto add-on), the cont-init script writes its host/port/creds
+    to ``/data/mqtt.json``. If the file is absent we fall back to the
+    addon-local Mosquitto on 127.0.0.1:1883.
+    """
+    p = Path(HA_MQTT_PATH)
+    if p.exists():
+        try:
+            with open(p) as f:
+                data = json.load(f)
+            return {
+                "host": data.get("host", "127.0.0.1"),
+                "port": int(data.get("port", 1883)),
+                "username": data.get("username", "") or "",
+                "password": data.get("password", "") or "",
+            }
+        except (json.JSONDecodeError, OSError, ValueError) as e:
+            logger.warning("Could not read %s, using local Mosquitto: %s", HA_MQTT_PATH, e)
+    return {"host": "127.0.0.1", "port": 1883, "username": "", "password": ""}
+
+
 def _build_config_from_ha_options(options: dict) -> dict:
+    mqtt = _load_ha_mqtt()
     return {
         "hotspot": {
             "enabled": options.get("hotspot_enabled", True),
@@ -51,7 +77,12 @@ def _build_config_from_ha_options(options: dict) -> dict:
         },
         "proxy": {
             "listen_host": "0.0.0.0",
-            "listen_port": 8883,
+            # 18883 not 8883: in HA addon mode we share host_network with
+            # the Mosquitto addon, which already binds 0.0.0.0:8883 for
+            # MQTT-over-TLS. cont-init/01-hotspot-setup adds an iptables
+            # PREROUTING REDIRECT 8883→18883 on wlan0 so the GGS still
+            # connects to its hardcoded port 8883.
+            "listen_port": 18883,
             # wlan0 and the SF upstream host are fixed for this add-on (single-purpose design)
             "upstream_host": "sf.mqtt.spider-farmer.com",
             "upstream_port": 8883,
@@ -59,10 +90,10 @@ def _build_config_from_ha_options(options: dict) -> dict:
             "key_file": "certs/server.key",
         },
         "mosquitto": {
-            "host": "127.0.0.1",
-            "port": 1883,
-            "local_user": "",
-            "local_password": "",
+            "host": mqtt["host"],
+            "port": mqtt["port"],
+            "local_user": mqtt["username"],
+            "local_password": mqtt["password"],
             "ha_mqtt_password": "",
         },
         "devices": _load_ha_devices(),

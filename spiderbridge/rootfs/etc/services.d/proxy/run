@@ -1,8 +1,28 @@
-#!/bin/sh
-echo "[INFO] Waiting for mosquitto..."
-until mosquitto_pub -h 127.0.0.1 -p 1883 -t spiderbridge/probe -m '' 2>/dev/null; do
+#!/usr/bin/with-contenv bashio
+# Wait for the broker the Python proxy will actually connect to. With
+# host_network=true and the Mosquitto add-on installed, the local
+# Mosquitto is skipped (services.d/mosquitto/run) so the old hardcoded
+# 127.0.0.1:1883 probe blocks forever.
+HOST=127.0.0.1
+PORT=1883
+USERNAME=""
+PASSWORD=""
+if bashio::services.available "mqtt"; then
+    HOST=$(bashio::services 'mqtt' 'host')
+    PORT=$(bashio::services 'mqtt' 'port')
+    USERNAME=$(bashio::services 'mqtt' 'username')
+    PASSWORD=$(bashio::services 'mqtt' 'password')
+fi
+
+bashio::log.info "Waiting for MQTT at ${HOST}:${PORT}..."
+AUTH=""
+if [ -n "$USERNAME" ]; then
+    AUTH="-u $USERNAME -P $PASSWORD"
+fi
+until mosquitto_pub -h "$HOST" -p "$PORT" $AUTH -t spiderbridge/probe -m '' 2>/dev/null; do
     sleep 1
 done
-echo "[INFO] Starting proxy"
+
+bashio::log.info "Starting proxy"
 cd /usr/share/spiderbridge
 exec python3 main_proxy.py

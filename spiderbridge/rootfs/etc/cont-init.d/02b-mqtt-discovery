@@ -1,0 +1,30 @@
+#!/usr/bin/with-contenv bashio
+# When Supervisor has an external MQTT broker (typical: official
+# Mosquitto addon), discover its host/port/credentials and write them
+# to /data/mqtt.json so proxy/config.py picks them up instead of the
+# hardcoded 127.0.0.1:1883 default. Without this the proxy talks to a
+# local Mosquitto that we just disabled (see services.d/mosquitto/run),
+# and discovery topics never reach HA.
+set -e
+
+if ! bashio::services.available "mqtt"; then
+    bashio::log.info "No external MQTT broker registered with Supervisor — proxy will use local Mosquitto."
+    rm -f /data/mqtt.json
+    exit 0
+fi
+
+HOST=$(bashio::services 'mqtt' 'host')
+PORT=$(bashio::services 'mqtt' 'port')
+USERNAME=$(bashio::services 'mqtt' 'username')
+PASSWORD=$(bashio::services 'mqtt' 'password')
+
+bashio::log.info "Found Supervisor MQTT broker at ${HOST}:${PORT}"
+
+cat > /data/mqtt.json << EOF
+{
+  "host": "${HOST}",
+  "port": ${PORT},
+  "username": "${USERNAME}",
+  "password": "${PASSWORD}"
+}
+EOF
