@@ -1,0 +1,16 @@
+#!/usr/bin/with-contenv bashio
+# Migration cleanup: 1.5.x and earlier shipped a custom_component shim
+# that the addon copied into /config/custom_components/spiderbridge/.
+# 1.6.0 dropped that path in favour of standard MQTT Discovery, but the
+# old files sit around indefinitely on existing installs and can shadow
+# real entities by registering with the same unique_id.
+#
+# We delete them on every start (idempotent) so users coming from 1.5.x
+# pick up the new architecture without having to clean up by hand.
+set -e
+
+OLD="/config/custom_components/spiderbridge"
+if [ -d "$OLD" ]; then
+    bashio::log.info "Removing legacy custom_component at $OLD (no longer used since 1.6.0)"
+    rm -rf "$OLD"
+fi

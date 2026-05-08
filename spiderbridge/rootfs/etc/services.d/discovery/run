@@ -1,6 +1,27 @@
-#!/bin/sh
-echo "[INFO] Waiting for proxy (10s)..."
-sleep 10
-echo "[INFO] Starting discovery"
+#!/usr/bin/with-contenv bashio
+# Wait for the broker the Python discovery service will publish to.
+# A fixed sleep blew up on slow ARM boots — first Discovery messages
+# raced ahead of the broker actually accepting connections.
+HOST=127.0.0.1
+PORT=1883
+USERNAME=""
+PASSWORD=""
+if bashio::services.available "mqtt"; then
+    HOST=$(bashio::services 'mqtt' 'host')
+    PORT=$(bashio::services 'mqtt' 'port')
+    USERNAME=$(bashio::services 'mqtt' 'username')
+    PASSWORD=$(bashio::services 'mqtt' 'password')
+fi
+
+bashio::log.info "Waiting for MQTT at ${HOST}:${PORT}..."
+AUTH=""
+if [ -n "$USERNAME" ]; then
+    AUTH="-u $USERNAME -P $PASSWORD"
+fi
+until mosquitto_pub -h "$HOST" -p "$PORT" $AUTH -t spiderbridge/probe -m '' 2>/dev/null; do
+    sleep 1
+done
+
+bashio::log.info "Starting discovery"
 cd /usr/share/spiderbridge
 exec python3 main_discovery.py

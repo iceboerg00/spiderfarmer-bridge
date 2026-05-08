@@ -63,7 +63,23 @@ fi
 chmod +x "$INSTALL_DIR/update.sh" "$INSTALL_DIR/start.sh" "$INSTALL_DIR/stop.sh"
 pm2 delete sf-proxy sf-discovery 2>/dev/null || true
 pm2 start "$INSTALL_DIR/ecosystem.config.js"
-pm2 startup systemd -u root --hp /root | grep "sudo env" | bash || true
+# Register pm2 to start on boot. The startup command emits a `sudo env …`
+# instruction line that we feed back into bash. Capture it explicitly so
+# we can detect and report when it doesn't appear (older pm2 versions, or
+# unsupported init systems) instead of silently swallowing the failure
+# and leaving the user without reboot persistence.
+PM2_STARTUP_OUT="$(pm2 startup systemd -u root --hp /root || true)"
+PM2_ENV_LINE="$(echo "$PM2_STARTUP_OUT" | grep -E '^sudo env' || true)"
+if [[ -n "$PM2_ENV_LINE" ]]; then
+  if ! eval "$PM2_ENV_LINE"; then
+    echo "[install] WARNING: pm2 startup command failed — services may not survive reboot."
+    echo "[install] Manual fix: re-run 'sudo $(echo "$PM2_ENV_LINE" | sed "s/^sudo //")' yourself."
+  fi
+else
+  echo "[install] WARNING: pm2 startup did not produce a 'sudo env' line — services may not survive reboot."
+  echo "[install] pm2 output was:"
+  echo "$PM2_STARTUP_OUT" | sed 's/^/[install]   /'
+fi
 pm2 save
 echo "[install] PM2 configured"
 

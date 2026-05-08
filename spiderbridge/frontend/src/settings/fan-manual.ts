@@ -68,7 +68,15 @@ export class FanManualSettings extends LitElement {
     return this.hass.states[slot]?.state ?? '';
   }
 
-  private _setNum(slot: string, value: number) {
+  private _setNum(slot: string, e: Event) {
+    const input = e.target as HTMLInputElement;
+    const raw = input.value.trim();
+    if (raw === '') return;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return;
+    const min = input.min !== '' ? Number(input.min) : -Infinity;
+    const max = input.max !== '' ? Number(input.max) : Infinity;
+    const value = Math.max(min, Math.min(max, n));
     this.hass.callService('number', 'set_value', { entity_id: slot, value });
   }
 
@@ -86,7 +94,7 @@ export class FanManualSettings extends LitElement {
             <input type="number" min="0" max="10"
               .value=${this._state(oscEntity)}
               @change=${(e: Event) =>
-                this._setNum(oscEntity, +(e.target as HTMLInputElement).value)} />
+                this._setNum(oscEntity, e)} />
           </div>`
         : null}
       ${windEntity

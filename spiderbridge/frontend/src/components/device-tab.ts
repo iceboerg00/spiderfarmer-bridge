@@ -18,6 +18,11 @@ export class DeviceTab extends LitElement {
   @property({ type: Number }) sliderMin = 0;
   /** Live value while the user drags the slider; null when not dragging. */
   @state() private _draggingLevel: number | null = null;
+  /** Last non-empty effect/preset_mode we observed. Used as fallback
+   *  when HA briefly clears the attribute mid-transition (e.g. schedule
+   *  off-phase) so the dropdown doesn't flash to empty + the settings
+   *  panel doesn't render the "Unknown mode" placeholder. */
+  @state() private _stickyMode = '';
 
   static override styles = [
     themeVariables,
@@ -181,15 +186,14 @@ export class DeviceTab extends LitElement {
   private get _currentMode(): string {
     const s = this._state;
     if (!s) return '';
-    // Don't fall back to 'Manual' — when the bridge omits effect/preset_mode
-    // (e.g. during a schedule off-phase before the modeType cache is seeded)
-    // we'd render the Manual placeholder and hide all schedule settings.
-    // An empty string surfaces 'Unknown mode' in the settings panel instead,
-    // which preserves the user's ability to re-pick a mode from the dropdown.
     const attr = this.deviceType === 'light'
       ? (s.attributes?.effect as string | undefined)
       : (s.attributes?.preset_mode as string | undefined);
-    return attr ?? '';
+    // Fall back to the last observed non-empty mode when HA momentarily
+    // clears the attribute (e.g. schedule off-phase). Without the
+    // sticky cache the dropdown empties and the settings panel renders
+    // the "Unknown mode" placeholder for a few seconds.
+    return attr || this._stickyMode;
   }
 
   private get _level(): number {
@@ -306,9 +310,19 @@ export class DeviceTab extends LitElement {
     }
   };
 
-  private _setNum(slot: string, value: number) {
+  private _setNum(slot: string, e: Event) {
     const id = this.extras[slot];
     if (!id) return;
+    const input = e.target as HTMLInputElement;
+    const raw = input.value.trim();
+    // Skip empty input + NaN — sending 0 silently would surprise the
+    // user. The HTML min/max attributes are advisory, so clamp here.
+    if (raw === '') return;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return;
+    const min = input.min !== '' ? Number(input.min) : -Infinity;
+    const max = input.max !== '' ? Number(input.max) : Infinity;
+    const value = Math.max(min, Math.min(max, n));
     this.hass.callService('number', 'set_value', { entity_id: id, value });
   }
 
@@ -325,6 +339,16 @@ export class DeviceTab extends LitElement {
     if (this._draggingLevel !== null && this._level === this._draggingLevel) {
       this._draggingLevel = null;
     }
+    // Capture the latest non-empty mode for the sticky fallback.
+    const s = this._state;
+    if (s) {
+      const live = this.deviceType === 'light'
+        ? (s.attributes?.effect as string | undefined)
+        : (s.attributes?.preset_mode as string | undefined);
+      if (live && live !== this._stickyMode) {
+        this._stickyMode = live;
+      }
+    }
   }
 
   private _renderTempProtection() {
@@ -340,9 +364,7 @@ export class DeviceTab extends LitElement {
               <label>Dim Threshold (°C)</label>
               <input type="number" min="0" max="50" step="0.1"
                 .value=${this._stateOf('schedule_dim_threshold')}
-                @change=${(e: Event) =>
-                  this._setNum('schedule_dim_threshold',
-                    +(e.target as HTMLInputElement).value)} />
+                @change=${(e: Event) => this._setNum('schedule_dim_threshold', e)} />
             </div>`
           : null}
         ${this.extras.schedule_off_threshold
@@ -350,9 +372,7 @@ export class DeviceTab extends LitElement {
               <label>Off Threshold (°C)</label>
               <input type="number" min="0" max="50" step="0.1"
                 .value=${this._stateOf('schedule_off_threshold')}
-                @change=${(e: Event) =>
-                  this._setNum('schedule_off_threshold',
-                    +(e.target as HTMLInputElement).value)} />
+                @change=${(e: Event) => this._setNum('schedule_off_threshold', e)} />
             </div>`
           : null}
       </div>
@@ -365,7 +385,12 @@ export class DeviceTab extends LitElement {
     }
     const name = this._state.attributes?.friendly_name ?? this.entity;
     const unit = '%';
-    const displayLevel = this._draggingLevel ?? this._level;
+    const rawDisplayLevel = this._draggingLevel ?? this._level;
+    // Clamp to [sliderMin, 100] before render — HA can briefly report
+    // a value below sliderMin (e.g. brightness=0 mid-fade) and the
+    // <input type=range> ignores .value below its min, but our fillPct
+    // calc would produce a negative percent for one frame.
+    const displayLevel = Math.max(this.sliderMin, Math.min(100, rawDisplayLevel));
     // Light is smooth (0-100); fans have N speed levels mapped onto 0-100 %
     // so the slider should snap to whole levels — step = 100 / speedMax.
     // Fan Circulation (10 levels) → step 10, Fan Exhaust (100 levels) → step 1.

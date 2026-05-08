@@ -1,0 +1,21 @@
+# Big or irrelevant directories that shouldn't be sent to the daemon
+# as part of the addon build context. The Dockerfile only needs:
+#   app/ (Python source + requirements + certs)
+#   frontend/ (TS source + package.json + package-lock.json)
+#   rootfs/
+# Everything else is dev tooling, vendored deps, or tests.
+frontend/node_modules
+frontend/dist
+frontend/coverage
+frontend/.cache
+app/__pycache__
+app/.pytest_cache
+app/tests
+**/.pytest_cache
+**/__pycache__
+**/.git
+**/.gitignore
+.cursor
+.mcp.json
+.opencode.json
+*.log

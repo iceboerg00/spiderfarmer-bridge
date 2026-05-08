@@ -42,9 +42,17 @@ export class FanCycleSettings extends LitElement {
     return id ? (this.hass.states[id]?.state ?? '') : '';
   }
 
-  private _setNum(slot: string, value: number) {
+  private _setNum(slot: string, e: Event) {
     const id = this.extras[slot];
     if (!id) return;
+    const input = e.target as HTMLInputElement;
+    const raw = input.value.trim();
+    if (raw === '') return;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return;
+    const min = input.min !== '' ? Number(input.min) : -Infinity;
+    const max = input.max !== '' ? Number(input.max) : Infinity;
+    const value = Math.max(min, Math.min(max, n));
     this.hass.callService('number', 'set_value', { entity_id: id, value });
   }
 
@@ -76,7 +84,7 @@ export class FanCycleSettings extends LitElement {
             <input type="number" min="0" max="1440"
               .value=${this._state('cycle_run_time')}
               @change=${(e: Event) =>
-                this._setNum('cycle_run_time', +(e.target as HTMLInputElement).value)} />
+                this._setNum('cycle_run_time', e)} />
           </div>`
         : null}
       ${this.extras.cycle_off_time
@@ -85,7 +93,7 @@ export class FanCycleSettings extends LitElement {
             <input type="number" min="0" max="1440"
               .value=${this._state('cycle_off_time')}
               @change=${(e: Event) =>
-                this._setNum('cycle_off_time', +(e.target as HTMLInputElement).value)} />
+                this._setNum('cycle_off_time', e)} />
           </div>`
         : null}
       ${this.extras.cycle_cycles
@@ -94,7 +102,7 @@ export class FanCycleSettings extends LitElement {
             <input type="number" min="1" max="100"
               .value=${this._state('cycle_cycles')}
               @change=${(e: Event) =>
-                this._setNum('cycle_cycles', +(e.target as HTMLInputElement).value)} />
+                this._setNum('cycle_cycles', e)} />
           </div>`
         : null}
       ${this.extras.cycle_speed
@@ -103,7 +111,7 @@ export class FanCycleSettings extends LitElement {
             <input type="number" min="1" max=${this.speedMax}
               .value=${this._state('cycle_speed')}
               @change=${(e: Event) =>
-                this._setNum('cycle_speed', +(e.target as HTMLInputElement).value)} />
+                this._setNum('cycle_speed', e)} />
           </div>`
         : null}
       ${this.extras.cycle_standby_speed
@@ -112,7 +120,7 @@ export class FanCycleSettings extends LitElement {
             <input type="number" min="0" max=${this.speedMax}
               .value=${this._state('cycle_standby_speed')}
               @change=${(e: Event) =>
-                this._setNum('cycle_standby_speed', +(e.target as HTMLInputElement).value)} />
+                this._setNum('cycle_standby_speed', e)} />
           </div>`
         : null}
       ${this.extras.cycle_oscillation
@@ -121,7 +129,7 @@ export class FanCycleSettings extends LitElement {
             <input type="number" min="0" max="10"
               .value=${this._state('cycle_oscillation')}
               @change=${(e: Event) =>
-                this._setNum('cycle_oscillation', +(e.target as HTMLInputElement).value)} />
+                this._setNum('cycle_oscillation', e)} />
           </div>`
         : null}
       ${this.extras.cycle_natural_wind

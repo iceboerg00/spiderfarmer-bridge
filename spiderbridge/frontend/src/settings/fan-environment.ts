@@ -43,9 +43,17 @@ export class FanEnvironmentSettings extends LitElement {
     return id ? (this.hass.states[id]?.state ?? '') : '';
   }
 
-  private _setNum(slot: string, value: number) {
+  private _setNum(slot: string, e: Event) {
     const id = this.extras[slot];
     if (!id) return;
+    const input = e.target as HTMLInputElement;
+    const raw = input.value.trim();
+    if (raw === '') return;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return;
+    const min = input.min !== '' ? Number(input.min) : -Infinity;
+    const max = input.max !== '' ? Number(input.max) : Infinity;
+    const value = Math.max(min, Math.min(max, n));
     this.hass.callService('number', 'set_value', { entity_id: id, value });
   }
 
@@ -82,7 +90,7 @@ export class FanEnvironmentSettings extends LitElement {
             <input type="number" min="1" max=${this.speedMax}
               .value=${this._state('environment_speed')}
               @change=${(e: Event) =>
-                this._setNum('environment_speed', +(e.target as HTMLInputElement).value)} />
+                this._setNum('environment_speed', e)} />
           </div>`
         : null}
       ${this.extras.environment_standby_speed
@@ -91,7 +99,7 @@ export class FanEnvironmentSettings extends LitElement {
             <input type="number" min="0" max=${this.speedMax}
               .value=${this._state('environment_standby_speed')}
               @change=${(e: Event) =>
-                this._setNum('environment_standby_speed', +(e.target as HTMLInputElement).value)} />
+                this._setNum('environment_standby_speed', e)} />
           </div>`
         : null}
       ${this.extras.environment_oscillation
@@ -100,7 +108,7 @@ export class FanEnvironmentSettings extends LitElement {
             <input type="number" min="0" max="10"
               .value=${this._state('environment_oscillation')}
               @change=${(e: Event) =>
-                this._setNum('environment_oscillation', +(e.target as HTMLInputElement).value)} />
+                this._setNum('environment_oscillation', e)} />
           </div>`
         : null}
       ${this.extras.environment_natural_wind

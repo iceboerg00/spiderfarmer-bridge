@@ -22,9 +22,16 @@ echo "[install-card] copied to $CARD_DEST"
 # the API call returns 404 / 405 and we just log + skip.
 RESOURCE_URL="/local/ggs-card.js"
 API="http://supervisor/core/api"
-AUTH="Authorization: Bearer ${SUPERVISOR_TOKEN}"
 
-existing=$(curl -fsS -H "$AUTH" "$API/lovelace/resources" 2>/dev/null || true)
+# Pass the bearer token via a curl config file (mode 600) instead of -H
+# on argv. Keeps SUPERVISOR_TOKEN out of `ps` output and out of any
+# transcript that runs curl with -v for debugging.
+AUTH_CONF=$(mktemp)
+trap 'rm -f "$AUTH_CONF"' EXIT
+printf 'header = "Authorization: Bearer %s"\n' "$SUPERVISOR_TOKEN" > "$AUTH_CONF"
+chmod 600 "$AUTH_CONF"
+
+existing=$(curl -fsS -K "$AUTH_CONF" "$API/lovelace/resources" 2>/dev/null || true)
 
 if [ -z "$existing" ]; then
   echo "[install-card] Lovelace resources API unreachable (YAML mode? supervisor-only setup?) — skipping resource registration."
@@ -36,7 +43,7 @@ resource_id=$(echo "$existing" | jq -r --arg u "$RESOURCE_URL" '.[] | select(.ur
 if [ -n "$resource_id" ]; then
   echo "[install-card] resource already registered (id=$resource_id)"
 else
-  curl -fsS -X POST -H "$AUTH" -H "Content-Type: application/json" \
+  curl -fsS -X POST -K "$AUTH_CONF" -H "Content-Type: application/json" \
     -d "{\"url\":\"$RESOURCE_URL\",\"res_type\":\"module\"}" \
     "$API/lovelace/resources" >/dev/null \
     && echo "[install-card] registered Lovelace resource $RESOURCE_URL" \

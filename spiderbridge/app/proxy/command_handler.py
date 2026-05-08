@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+import uuid
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -49,11 +50,16 @@ def _hhmm_to_seconds(s) -> int:
 
 
 def _build(mac: str, uid: str, domain: str, module: str, obj: dict) -> dict:
+    # uuid4 hex (16 chars) instead of millisecond timestamp — two commands
+    # injected within the same millisecond would otherwise collide and the
+    # controller could conflate them. Timestamp is preserved as a prefix so
+    # logs stay roughly chronological.
+    msg_id = f"{int(time.time() * 1000)}{uuid.uuid4().hex[:8]}"
     return {
         "method": "setConfigField",
         "pid": mac,
         "params": {"keyPath": [domain, module], module: obj},
-        "msgId": str(int(time.time() * 1000)),
+        "msgId": msg_id,
         "uid": uid,
     }
 

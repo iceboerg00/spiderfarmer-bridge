@@ -63,6 +63,11 @@ class ProxySession:
         # so the HA effect dropdown stays consistent with what the
         # controller is actually doing.
         self.light_state: Dict[str, dict] = {}
+        # Tracks the detached _initial_poll task so handle_client can
+        # cancel it on cleanup — otherwise a session that disconnects
+        # within the 3 s startup delay leaves the task running and it
+        # tries to inject against a closed writer.
+        self.initial_poll_task: Optional[asyncio.Task] = None
 
     def set_upstream(self, writer: asyncio.StreamWriter) -> None:
         self._upstream_writer = writer
@@ -105,6 +110,9 @@ class MITMProxy:
 
     def build_server_ssl_ctx(self) -> ssl.SSLContext:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        # Pin minimum TLS version. Older OpenSSL builds default to TLS 1.0
+        # which would let a misbehaving client downgrade the channel.
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         ctx.load_cert_chain(
             certfile=self.config["proxy"]["cert_file"],
             keyfile=self.config["proxy"]["key_file"],
@@ -113,6 +121,7 @@ class MITMProxy:
 
     def _build_upstream_ssl_ctx(self) -> ssl.SSLContext:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         ctx.check_hostname = True
         ctx.verify_mode = ssl.CERT_REQUIRED
         # SF MQTT server uses a private CA — not in system trust store
@@ -237,7 +246,14 @@ class MITMProxy:
 
         outlet_num = None
         if field.startswith("outlet_") and field[7:].isdigit():
-            outlet_num = int(field[7:])
+            n = int(field[7:])
+            # GGS controllers expose at most 10 outlets — anything else is a
+            # malformed topic the bridge should not forward.
+            if 1 <= n <= 10:
+                outlet_num = n
+            else:
+                logger.warning("Out-of-range outlet number in command: %s", field)
+                return
 
         payload = translate_command(field, value, session.mac, session.uid, outlet_num,
                                     device_state=session.device_state, subfield=subfield,
@@ -325,7 +341,8 @@ class MITMProxy:
                     # handshake before we start firing extra requests at it.
                     await asyncio.sleep(3)
                     await self.poll_session_config(s)
-                asyncio.create_task(_initial_poll())
+                # Track the task so handle_client can cancel it on cleanup.
+                s.initial_poll_task = asyncio.create_task(_initial_poll())
                 return s
 
             async def relay_up():
@@ -487,7 +504,33 @@ class MITMProxy:
                     except Exception:
                         pass
 
-            await asyncio.gather(relay_up(), relay_down())
+            # Spawn each relay as a task and cancel the sibling when one
+            # exits — gather() alone leaves the other half reading until
+            # the underlying socket EOFs, leaking an upstream connection
+            # if relay_up dies first (or vice versa).
+            up_task = asyncio.create_task(relay_up())
+            down_task = asyncio.create_task(relay_down())
+            try:
+                done, pending = await asyncio.wait(
+                    {up_task, down_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for t in pending:
+                    t.cancel()
+                # Drain so cancellations finish (and any genuine error
+                # surfaces via the awaited task).
+                for t in done:
+                    if t.exception() is not None:
+                        raise t.exception()  # type: ignore[misc]
+                for t in pending:
+                    try:
+                        await t
+                    except (asyncio.CancelledError, Exception):
+                        pass
+            except asyncio.CancelledError:
+                up_task.cancel()
+                down_task.cancel()
+                raise
 
         except ssl.SSLError as e:
             logger.warning("TLS MITM failed (%s) — transparent TCP relay fallback", e)
@@ -501,6 +544,10 @@ class MITMProxy:
         finally:
             s = nonlocal_session[0]
             if s:
+                # Cancel the detached initial-poll if it's still pending so
+                # it doesn't run against a closed upstream writer.
+                if s.initial_poll_task is not None and not s.initial_poll_task.done():
+                    s.initial_poll_task.cancel()
                 s.publish_availability("offline")
                 self._sessions.pop(s.device_id, None)
             if upstream_writer:
@@ -555,10 +602,11 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
     # Store current module states for use in commands
     d = data.get("data", {})
     for module in ("light", "light2", "blower", "fan", "heater", "humidifier", "dehumidifier"):
-        if module in d:
+        if module in d and isinstance(d[module], dict):
             # Merge instead of replace — getDevSta on some firmwares carries
             # only {on, level} for light/fan, which would wipe cached fields
-            # (modeType, schedule, etc) we need to keep.
+            # (modeType, schedule, etc) we need to keep. isinstance guard
+            # prevents update(None) crashes when firmware sends junk.
             session.device_state.setdefault(module, {}).update(d[module])
     # Also feed light/fan caches from rich UP messages (getConfigField
     # responses, full setConfigField echoes). Same merge semantics so

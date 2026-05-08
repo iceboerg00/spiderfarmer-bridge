@@ -68,6 +68,9 @@ export class ModeDropdown extends LitElement {
     return html`
       <div class="wrapper">
         <select @change=${this._onChange}>
+          ${!this.value
+            ? html`<option value="" disabled hidden ?selected=${true}></option>`
+            : null}
           ${!inOptions && this.value
             ? html`<option value=${this.value} ?selected=${true}>${this.value}</option>`
             : null}

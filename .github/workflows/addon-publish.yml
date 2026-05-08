@@ -1,0 +1,97 @@
+name: Publish addon image to GHCR
+
+# Builds the addon image for every supported architecture and pushes it
+# to ghcr.io/<owner>/<arch>-addon-spiderbridge:<version>. Once published,
+# users no longer build locally — Supervisor pulls the matching arch
+# image directly. Skip-installs go from ~10 min on a Pi to ~30 s.
+#
+# Triggered by pushing a tag like `addon-v1.6.7`. The version after the
+# `addon-v` prefix becomes the image tag.
+
+on:
+  push:
+    tags:
+      - 'addon-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Addon version (e.g. 1.6.7) — must match config.yaml'
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: aarch64
+            base: ghcr.io/home-assistant/aarch64-base:latest
+            platform: linux/arm64
+          - arch: armv7
+            base: ghcr.io/home-assistant/armv7-base:latest
+            platform: linux/arm/v7
+          - arch: armhf
+            base: ghcr.io/home-assistant/armhf-base:latest
+            platform: linux/arm/v6
+          - arch: amd64
+            base: ghcr.io/home-assistant/amd64-base:latest
+            platform: linux/amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            # tag form: addon-v1.6.7
+            echo "version=${GITHUB_REF_NAME#addon-v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify config.yaml matches the tag
+        run: |
+          want="${{ steps.ver.outputs.version }}"
+          got=$(grep -E '^version:' spiderbridge/config.yaml | sed -E 's/^version:[[:space:]]*"?([^"]+)"?/\1/')
+          if [ "$want" != "$got" ]; then
+            echo "::error::Tag version $want does not match spiderbridge/config.yaml ($got)"
+            exit 1
+          fi
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lowercase owner for image namespace
+        id: owner
+        run: echo "name=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: spiderbridge
+          file: spiderbridge/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          provenance: false
+          tags: |
+            ghcr.io/${{ steps.owner.outputs.name }}/${{ matrix.arch }}-addon-spiderbridge:${{ steps.ver.outputs.version }}
+            ghcr.io/${{ steps.owner.outputs.name }}/${{ matrix.arch }}-addon-spiderbridge:latest
+          build-args: |
+            BUILD_FROM=${{ matrix.base }}
+            BUILD_VERSION=${{ steps.ver.outputs.version }}
+            BUILD_ARCH=${{ matrix.arch }}
+          labels: |
+            io.hass.version=${{ steps.ver.outputs.version }}
+            io.hass.arch=${{ matrix.arch }}
+            io.hass.type=addon
+            io.hass.name=SpiderBridge
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}

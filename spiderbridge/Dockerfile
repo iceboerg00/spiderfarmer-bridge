@@ -28,7 +28,12 @@ RUN apk add --no-cache \
     curl
 
 COPY app/requirements.txt /tmp/requirements.txt
-RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/requirements.txt
+# Install Python deps into a dedicated venv instead of --break-system-packages.
+# Keeps PEP 668 happy and survives base-image Python upgrades cleanly.
+RUN python3 -m venv /opt/spiderbridge-venv \
+    && /opt/spiderbridge-venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt
+# Make the venv's python the default for cont-init and service scripts.
+ENV PATH="/opt/spiderbridge-venv/bin:${PATH}"
 
 COPY app/proxy/ /usr/share/spiderbridge/proxy/
 COPY app/ha/ /usr/share/spiderbridge/ha/
