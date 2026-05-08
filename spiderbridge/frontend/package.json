@@ -1,6 +1,6 @@
 {
   "name": "spiderfarmer-ggs-card",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Custom Home Assistant Lovelace card for the SpiderBridge GGS controller",
   "type": "module",
   "main": "dist/ggs-card.js",

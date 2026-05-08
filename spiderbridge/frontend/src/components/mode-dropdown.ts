@@ -20,6 +20,18 @@ export class ModeDropdown extends LitElement {
         font: inherit;
         appearance: none;
         cursor: pointer;
+        /* Tells the browser to render the native dropdown popup with the
+           current theme's UI scheme. Without this the popup ignores the
+           card's CSS vars and shows the default OS chrome (dark popup
+           on a light HA theme = unreadable). */
+        color-scheme: light dark;
+      }
+      /* The native dropdown popup renders <option> with browser defaults
+         on most engines, but Chromium/Firefox honor explicit colors when
+         set on the option itself. Falls back gracefully on Safari. */
+      option {
+        background: var(--ggs-bg);
+        color: var(--ggs-fg);
       }
       select:focus {
         outline: none;
