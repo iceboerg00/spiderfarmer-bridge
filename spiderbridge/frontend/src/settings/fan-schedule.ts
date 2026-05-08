@@ -43,9 +43,17 @@ export class FanScheduleSettings extends LitElement {
     return id ? (this.hass.states[id]?.state ?? '') : '';
   }
 
-  private _setNum(slot: string, value: number) {
+  private _setNum(slot: string, e: Event) {
     const id = this.extras[slot];
     if (!id) return;
+    const input = e.target as HTMLInputElement;
+    const raw = input.value.trim();
+    if (raw === '') return;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return;
+    const min = input.min !== '' ? Number(input.min) : -Infinity;
+    const max = input.max !== '' ? Number(input.max) : Infinity;
+    const value = Math.max(min, Math.min(max, n));
     this.hass.callService('number', 'set_value', { entity_id: id, value });
   }
 
@@ -85,7 +93,7 @@ export class FanScheduleSettings extends LitElement {
             <input type="number" min="1" max=${this.speedMax}
               .value=${this._state('schedule_speed')}
               @change=${(e: Event) =>
-                this._setNum('schedule_speed', +(e.target as HTMLInputElement).value)} />
+                this._setNum('schedule_speed', e)} />
           </div>`
         : null}
       ${this.extras.schedule_standby_speed
@@ -94,7 +102,7 @@ export class FanScheduleSettings extends LitElement {
             <input type="number" min="0" max=${this.speedMax}
               .value=${this._state('schedule_standby_speed')}
               @change=${(e: Event) =>
-                this._setNum('schedule_standby_speed', +(e.target as HTMLInputElement).value)} />
+                this._setNum('schedule_standby_speed', e)} />
           </div>`
         : null}
       ${this.extras.schedule_oscillation
@@ -103,7 +111,7 @@ export class FanScheduleSettings extends LitElement {
             <input type="number" min="0" max="10"
               .value=${this._state('schedule_oscillation')}
               @change=${(e: Event) =>
-                this._setNum('schedule_oscillation', +(e.target as HTMLInputElement).value)} />
+                this._setNum('schedule_oscillation', e)} />
           </div>`
         : null}
       ${this.extras.schedule_natural_wind

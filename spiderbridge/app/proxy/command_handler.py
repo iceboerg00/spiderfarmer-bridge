@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+import uuid
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -49,11 +50,16 @@ def _hhmm_to_seconds(s) -> int:
 
 
 def _build(mac: str, uid: str, domain: str, module: str, obj: dict) -> dict:
+    # uuid4 hex (16 chars) instead of millisecond timestamp — two commands
+    # injected within the same millisecond would otherwise collide and the
+    # controller could conflate them. Timestamp is preserved as a prefix so
+    # logs stay roughly chronological.
+    msg_id = f"{int(time.time() * 1000)}{uuid.uuid4().hex[:8]}"
     return {
         "method": "setConfigField",
         "pid": mac,
         "params": {"keyPath": [domain, module], module: obj},
-        "msgId": str(int(time.time() * 1000)),
+        "msgId": msg_id,
         "uid": uid,
     }
 
@@ -206,6 +212,20 @@ def translate_command(
         except (ValueError, TypeError):
             cmd = {"state": value}
         on = _onoff(cmd.get("state", "ON"))
+        # Mode-only change while the light is currently off: HA's
+        # light.turn_on always implies state=ON, so a dropdown pick from
+        # the card would briefly light up the bulb before the schedule's
+        # off-phase or another rule turns it back off — visible flicker.
+        # If the user only sent an effect (no brightness) and the light
+        # is currently off, preserve the off state and only update the
+        # modeType. The next on-phase / explicit turn-on uses the new
+        # mode without a transient flash.
+        if (
+            "effect" in cmd
+            and "brightness" not in cmd
+            and int(cur.get("on", cur.get("mOnOff", 0))) == 0
+        ):
+            on = 0
         if "brightness" in cmd:
             level = int(cmd["brightness"])
         else:

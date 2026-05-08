@@ -1,11 +1,16 @@
 name: SpiderBridge
 slug: spiderbridge
-version: "1.6.6"
+version: "1.6.7"
 description: Spider Farmer GGS Controller → Home Assistant via MQTT Discovery
 url: https://github.com/iceboerg00/spiderfarmer-bridge
+# `image:` (pre-built GHCR pull) gets enabled by .github/workflows/
+# addon-publish.yml the first time an addon-v* tag is pushed. Until
+# then Supervisor builds the image locally from the Dockerfile.
 arch:
   - aarch64
+  - armv7
   - armhf
+  - amd64
 startup: application
 boot: auto
 init: false

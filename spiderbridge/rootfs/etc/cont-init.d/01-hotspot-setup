@@ -31,12 +31,17 @@ iw dev "${IFACE}" set power_save off 2>/dev/null || true
 # ieee80211w=0 disables Protected Management Frames — the GGS Controller does
 # not negotiate PMF and silently drops association when it is required.
 mkdir -p /tmp/spiderbridge
+chmod 700 /tmp/spiderbridge
 printf 'interface=%s\nssid=%s\nhw_mode=g\nchannel=%s\nwpa=2\nwpa_passphrase=%s\nwpa_key_mgmt=WPA-PSK\nwpa_pairwise=CCMP\nrsn_pairwise=CCMP\nieee80211w=0\n' \
     "${IFACE}" "${SSID}" "${CHANNEL}" "${PASSWORD}" > /tmp/spiderbridge/hostapd.conf
+# hostapd.conf carries the WPA passphrase in plaintext — keep it
+# readable only by root, not world-readable as /tmp defaults.
+chmod 600 /tmp/spiderbridge/hostapd.conf
 
 SUBNET=$(echo "${IP}" | cut -d. -f1-3)
 printf 'interface=%s\nbind-interfaces\ndhcp-range=%s.10,%s.50,255.255.255.0,24h\naddress=/sf.mqtt.spider-farmer.com/%s\nno-resolv\nserver=8.8.8.8\n' \
     "${IFACE}" "${SUBNET}" "${SUBNET}" "${IP}" > /tmp/spiderbridge/dnsmasq.conf
+chmod 600 /tmp/spiderbridge/dnsmasq.conf
 
 iptables -t nat -F PREROUTING 2>/dev/null || true
 # Redirect controller traffic from the standard MQTT-TLS port (8883)

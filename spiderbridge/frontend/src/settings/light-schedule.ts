@@ -35,9 +35,17 @@ export class LightScheduleSettings extends LitElement {
     `,
   ];
 
-  private _setNumber(slot: string, value: number) {
+  private _setNumber(slot: string, e: Event) {
     const entity = this.extras[slot];
     if (!entity) return;
+    const input = e.target as HTMLInputElement;
+    const raw = input.value.trim();
+    if (raw === '') return;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return;
+    const min = input.min !== '' ? Number(input.min) : -Infinity;
+    const max = input.max !== '' ? Number(input.max) : Infinity;
+    const value = Math.max(min, Math.min(max, n));
     this.hass.callService('number', 'set_value', { entity_id: entity, value });
   }
 
@@ -65,7 +73,7 @@ export class LightScheduleSettings extends LitElement {
             <input type="number" min="0" max="100"
               .value=${this._stateNum('schedule_brightness')}
               @change=${(e: Event) =>
-                this._setNumber('schedule_brightness', +(e.target as HTMLInputElement).value)} />
+                this._setNumber('schedule_brightness', e)} />
           </div>`
         : null}
       ${this.extras.schedule_start_time
@@ -92,7 +100,7 @@ export class LightScheduleSettings extends LitElement {
             <input type="number" min="0" max="240"
               .value=${this._stateNum('schedule_fade_time')}
               @change=${(e: Event) =>
-                this._setNumber('schedule_fade_time', +(e.target as HTMLInputElement).value)} />
+                this._setNumber('schedule_fade_time', e)} />
           </div>`
         : null}
     `;

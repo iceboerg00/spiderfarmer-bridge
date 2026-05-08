@@ -1,0 +1,32 @@
+name: File Mode Check
+
+# Catches the Windows-fileMode-quirk regression class (#4, #10): shell
+# scripts and s6-overlay cont-init/services scripts committed without
+# the executable bit silently break the addon container or the Pi
+# update path.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  check-exec-bits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify shell scripts are executable
+        run: |
+          set -e
+          BAD=$(git ls-files -s -- '*.sh' \
+            'spiderbridge/rootfs/etc/cont-init.d/*' \
+            'spiderbridge/rootfs/etc/services.d/*/run' \
+            | awk '$1 != "100755" { print }')
+          if [ -n "$BAD" ]; then
+            echo "::error::The following scripts are missing the executable bit (mode 100755):"
+            echo "$BAD"
+            echo ""
+            echo "Fix locally with: git update-index --chmod=+x <file>"
+            exit 1
+          fi
+          echo "All shell scripts are 100755."

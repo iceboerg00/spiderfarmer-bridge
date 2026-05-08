@@ -237,9 +237,11 @@ def test_payload_includes_pid_uid_and_msg_id():
     r = translate_command("heater", "ON", "AABBCC", "uid1")
     assert r["pid"] == "AABBCC"
     assert r["uid"] == "uid1"
-    # msgId is a string of millisecond timestamp
+    # msgId starts with the millisecond timestamp + uuid hex suffix for
+    # collision resistance, so it's not parseable as a plain int.
     assert isinstance(r["msgId"], str)
-    assert int(r["msgId"]) > 0
+    assert len(r["msgId"]) >= 8
+    assert r["msgId"][:13].isdigit()  # millisecond timestamp prefix
 
 
 # ── Fan app-parity (preset_mode + subfield writes) ──────────────────────────

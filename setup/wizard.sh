@@ -8,6 +8,17 @@ exec </dev/tty
 
 INSTALL_DIR="${1:-/opt/spiderfarmer-bridge}"
 CONFIG="$INSTALL_DIR/config/config.yaml"
+RECONFIGURE="${2:-}"
+
+# Don't clobber an existing config — re-running bootstrap (e.g. after
+# a Pi reimage that copied /opt over) would otherwise wipe the learned
+# MAC and the user's hotspot password. Pass --reconfigure as the second
+# arg to force a rewrite.
+if [[ -f "$CONFIG" && "$RECONFIGURE" != "--reconfigure" ]]; then
+  echo "[wizard] Existing config detected at $CONFIG — skipping wizard."
+  echo "[wizard] To rewrite from scratch run: $0 $INSTALL_DIR --reconfigure"
+  exit 0
+fi
 
 echo ""
 echo " _________      .__    .___          ___.         .__    .___              "

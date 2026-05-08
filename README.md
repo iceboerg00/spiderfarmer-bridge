@@ -239,9 +239,10 @@ In Option B the card does **not** auto-install — use HACS or the manual route.
 ### Option B (standalone)
 
 ```bash
-sudo git -C /opt/spiderfarmer-bridge pull
-sudo pm2 restart sf-proxy sf-discovery
+sudo /opt/spiderfarmer-bridge/update.sh
 ```
+
+`update.sh` handles `git fetch`, `git pull` (only if the remote moved), and the pm2 restart in one step. It always restarts the services even if nothing was pulled, so a previously-failed restart doesn't leave you stuck on stale code.
 
 For the card after an update: HACS → "Spider Farmer GGS Card" → Update, or manually `npm run build` + copy the file again.
 
