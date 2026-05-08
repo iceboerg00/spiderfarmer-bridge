@@ -18,17 +18,16 @@ export class DeviceTab extends LitElement {
   @property({ type: Number }) sliderMin = 0;
   /** Live value while the user drags the slider; null when not dragging. */
   @state() private _draggingLevel: number | null = null;
-  /** Last non-empty effect/preset_mode we observed. Used as fallback
-   *  when HA briefly clears the attribute mid-transition (e.g. schedule
-   *  off-phase) so the dropdown doesn't flash to empty + the settings
-   *  panel doesn't render the "Unknown mode" placeholder. Persisted to
-   *  localStorage per entity so a card reload during an off-phase
-   *  (when the live attribute is already empty) still recovers the
-   *  user's last-seen mode. */
-  @state() private _stickyMode = '';
+  /** Last mode the user explicitly chose via the dropdown. Used as the
+   *  fallback when HA's effect/preset_mode attribute is empty (e.g.
+   *  schedule off-phase) so the panel doesn't flash to "Unknown mode".
+   *  ONLY updated on dropdown selection — slider/toggle that
+   *  transiently force Manual don't overwrite the stored value, so
+   *  reloading during an off-phase still surfaces the user's intent. */
+  @state() private _userMode = '';
 
-  private get _stickyKey(): string {
-    return `ggs-card.stickyMode:${this.entity}`;
+  private get _userModeKey(): string {
+    return `ggs-card.userMode:${this.entity}`;
   }
 
   static override styles = [
@@ -196,11 +195,10 @@ export class DeviceTab extends LitElement {
     const attr = this.deviceType === 'light'
       ? (s.attributes?.effect as string | undefined)
       : (s.attributes?.preset_mode as string | undefined);
-    // Fall back to the last observed non-empty mode when HA momentarily
-    // clears the attribute (e.g. schedule off-phase). Without the
-    // sticky cache the dropdown empties and the settings panel renders
-    // the "Unknown mode" placeholder for a few seconds.
-    return attr || this._stickyMode;
+    // Show what HA reports first; fall back to the last user-chosen
+    // mode (from the dropdown) when HA has nothing — typically during
+    // a schedule off-phase right after card load.
+    return attr || this._userMode;
   }
 
   private get _level(): number {
@@ -285,6 +283,15 @@ export class DeviceTab extends LitElement {
 
   private _onModeChange = (e: CustomEvent<string>) => {
     const mode = e.detail;
+    // User explicitly picked a mode — remember it so off-phase
+    // fallbacks restore THIS choice rather than a transient Manual
+    // that the slider/toggle may have published since.
+    this._userMode = mode;
+    try {
+      window.localStorage.setItem(this._userModeKey, mode);
+    } catch {
+      // localStorage may be disabled.
+    }
     if (this.deviceType === 'light') {
       this.hass.callService('light', 'turn_on', { entity_id: this.entity, effect: mode });
     } else {
@@ -340,16 +347,14 @@ export class DeviceTab extends LitElement {
 
   override connectedCallback() {
     super.connectedCallback();
-    // Restore the last seen mode from localStorage so a fresh card
-    // load during a schedule off-phase (when HA has no live effect
-    // attribute) doesn't flash "Unknown mode" until the bridge
+    // Restore the last user-chosen mode so a fresh card load during a
+    // schedule off-phase doesn't flash "Unknown mode" until the bridge
     // republishes.
     try {
-      const saved = window.localStorage.getItem(this._stickyKey);
-      if (saved) this._stickyMode = saved;
+      const saved = window.localStorage.getItem(this._userModeKey);
+      if (saved) this._userMode = saved;
     } catch {
-      // localStorage may be disabled (private mode, sandboxed iframe);
-      // not fatal — sticky just won't survive reload.
+      // localStorage may be disabled (private mode, sandboxed iframe).
     }
   }
 
@@ -360,22 +365,6 @@ export class DeviceTab extends LitElement {
     // bridge the gap between user release and HA's echoed state.
     if (this._draggingLevel !== null && this._level === this._draggingLevel) {
       this._draggingLevel = null;
-    }
-    // Capture the latest non-empty mode for the sticky fallback +
-    // persist so the next card load survives an off-phase.
-    const s = this._state;
-    if (s) {
-      const live = this.deviceType === 'light'
-        ? (s.attributes?.effect as string | undefined)
-        : (s.attributes?.preset_mode as string | undefined);
-      if (live && live !== this._stickyMode) {
-        this._stickyMode = live;
-        try {
-          window.localStorage.setItem(this._stickyKey, live);
-        } catch {
-          // ignore — see connectedCallback
-        }
-      }
     }
   }
 
