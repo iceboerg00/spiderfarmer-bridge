@@ -19,6 +19,8 @@ def main() -> None:
     mqcfg = config["mosquitto"]
 
     mq = mqtt.Client(client_id="sf-bridge-discovery")
+    if mqcfg.get("local_user"):
+        mq.username_pw_set(mqcfg["local_user"], mqcfg.get("local_password", ""))
     mq.connect(mqcfg["host"], mqcfg["port"], keepalive=60)
 
     publisher = DiscoveryPublisher(config, mq)
