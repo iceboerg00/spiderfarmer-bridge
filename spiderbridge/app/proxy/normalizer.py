@@ -157,7 +157,18 @@ def fan_extras_topics(device_id: str, prefix: str, block: Dict[str, Any]) -> Dic
 
 def normalize_status(device_id: str, data: Dict[str, Any],
                      light_cache: Dict[str, dict] | None = None,
-                     fan_cache: Dict[str, dict] | None = None) -> Dict[str, str]:
+                     fan_cache: Dict[str, dict] | None = None,
+                     is_config_resp: bool = False) -> Dict[str, str]:
+    """Translate an SF status frame into MQTT topic→value pairs.
+
+    is_config_resp: set True when the frame originated from a
+    getConfigField reply (vs getDevSta). Config replies carry the
+    *configured* mOnOff/mLevel defaults — not the live on/level — so
+    using them to publish the main state topic falsely flips lights/
+    fans to ON during a schedule off-phase. With the flag set we skip
+    the main state topic and only emit the per-field extras
+    (schedule/PPFD/cycle settings) which DO come from config.
+    """
     result: Dict[str, str] = {}
     d = data.get("data", data)
 
@@ -203,17 +214,18 @@ def normalize_status(device_id: str, data: Dict[str, Any],
     light = d.get("light", {})
     if light:
         mode = light.get("modeType", lc.get("light", {}).get("modeType"))
-        payload = {
-            "state": _on_off(light.get("on", light.get("mOnOff", 0))),
-            "brightness": light.get("level", light.get("mLevel", 0)),
-        }
-        # Only emit effect when modeType is actually known (live or cached).
-        # A hard-coded default would flip HA's effect dropdown to Manual
-        # whenever a getDevSta arrives before the cache is seeded, e.g.
-        # mid-schedule off-phase right after bridge restart.
-        if mode is not None:
-            payload["effect"] = _LIGHT_MODES.get(mode, str(mode))
-        result[f"spiderfarmer/{device_id}/state/light"] = json.dumps(payload)
+        if not is_config_resp:
+            payload = {
+                "state": _on_off(light.get("on", light.get("mOnOff", 0))),
+                "brightness": light.get("level", light.get("mLevel", 0)),
+            }
+            # Only emit effect when modeType is actually known (live or cached).
+            # A hard-coded default would flip HA's effect dropdown to Manual
+            # whenever a getDevSta arrives before the cache is seeded, e.g.
+            # mid-schedule off-phase right after bridge restart.
+            if mode is not None:
+                payload["effect"] = _LIGHT_MODES.get(mode, str(mode))
+            result[f"spiderfarmer/{device_id}/state/light"] = json.dumps(payload)
         # Merge cached schedule/ppfd/temp fields into the block we hand to
         # light_extras_topics — getDevSta on its own only carries on/level
         # and would yield empty entities until the next setConfigField.
@@ -223,32 +235,35 @@ def normalize_status(device_id: str, data: Dict[str, Any],
     light2 = d.get("light2", {})
     if light2:
         mode2 = light2.get("modeType", lc.get("light2", {}).get("modeType"))
-        payload2 = {
-            "state": _on_off(light2.get("on", light2.get("mOnOff", 0))),
-            "brightness": light2.get("level", light2.get("mLevel", 0)),
-        }
-        if mode2 is not None:
-            payload2["effect"] = _LIGHT_MODES.get(mode2, str(mode2))
-        result[f"spiderfarmer/{device_id}/state/light2"] = json.dumps(payload2)
+        if not is_config_resp:
+            payload2 = {
+                "state": _on_off(light2.get("on", light2.get("mOnOff", 0))),
+                "brightness": light2.get("level", light2.get("mLevel", 0)),
+            }
+            if mode2 is not None:
+                payload2["effect"] = _LIGHT_MODES.get(mode2, str(mode2))
+            result[f"spiderfarmer/{device_id}/state/light2"] = json.dumps(payload2)
         merged2 = {**lc.get("light2", {}), **light2}
         result.update(light_extras_topics(device_id, "light2", merged2))
 
     # ── Blower (JSON state) ───────────────────────────────────────────────────
     blower = d.get("blower", {})
     if blower:
-        result[f"spiderfarmer/{device_id}/state/blower"] = json.dumps({
-            "state": _on_off(blower.get("on", blower.get("mOnOff", 0))),
-            "percentage": blower.get("level", blower.get("mLevel", 0)),
-        })
+        if not is_config_resp:
+            result[f"spiderfarmer/{device_id}/state/blower"] = json.dumps({
+                "state": _on_off(blower.get("on", blower.get("mOnOff", 0))),
+                "percentage": blower.get("level", blower.get("mLevel", 0)),
+            })
         result.update(fan_extras_topics(device_id, "blower", blower))
 
     # ── Fan (JSON state + oscillation) ────────────────────────────────────────
     fan = d.get("fan", {})
     if fan:
-        result[f"spiderfarmer/{device_id}/state/fan"] = json.dumps({
-            "state": _on_off(fan.get("on", fan.get("mOnOff", 0))),
-            "percentage": fan.get("level", fan.get("mLevel", 0)),
-        })
+        if not is_config_resp:
+            result[f"spiderfarmer/{device_id}/state/fan"] = json.dumps({
+                "state": _on_off(fan.get("on", fan.get("mOnOff", 0))),
+                "percentage": fan.get("level", fan.get("mLevel", 0)),
+            })
         result.update(fan_extras_topics(device_id, "fan", fan))
 
     # ── Accessories ───────────────────────────────────────────────────────────

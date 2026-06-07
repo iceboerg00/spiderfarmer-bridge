@@ -673,6 +673,11 @@ def _process_publish(session: ProxySession, pkt, mqtt_client: mqtt.Client,
         session.device_id, data,
         light_cache=getattr(session, "light_state", None),
         fan_cache=getattr(session, "fan_state", None),
+        # getConfigField returns the *configured* mOnOff/mLevel defaults,
+        # not the live on/level. Without this flag the 10-min config poll
+        # republishes state=ON during a schedule off-phase and HA logs a
+        # ~3s "on → off" flicker each cycle.
+        is_config_resp=(method == "getConfigField"),
     )
     for norm_topic, value in normalized.items():
         mqtt_client.publish(norm_topic, value, retain=True)
