@@ -101,12 +101,25 @@ class ProxySession:
 
 
 class MITMProxy:
+    # Upstream resilience tuning. When the SF cloud silently drops our SYNs
+    # (AWS Shield rate-limit, Starlink CGNAT-IP collateral, etc.) every new
+    # client connection used to block 60 s on the TLS handshake. Multiplied
+    # by the controller's automatic reconnect loop that piled up hundreds of
+    # half-open sessions and may have *prolonged* the upstream block. With
+    # the breaker tripped we close the client connection quickly so the
+    # controller backs off too.
+    UPSTREAM_CONNECT_TIMEOUT = 10.0  # seconds for the upstream TLS handshake
+    UPSTREAM_FAILURE_THRESHOLD = 3   # consecutive timeouts before tripping
+    UPSTREAM_BACKOFF_SECONDS = 300.0  # 5 min cool-down once tripped
+
     def __init__(self, config: dict, mqtt_client: mqtt.Client, config_path: str = "config/config.yaml"):
         self.config = config
         self.mqtt_client = mqtt_client
         self._config_path = config_path
         self._sessions: Dict[str, ProxySession] = {}
         self._known_soil_ids: Dict[str, set] = {}  # device_id → set of seen sensor IDs
+        self._upstream_failures: int = 0
+        self._upstream_blocked_until: float = 0.0  # monotonic timestamp
 
     def build_server_ssl_ctx(self) -> ssl.SSLContext:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -308,13 +321,44 @@ class MITMProxy:
         nonlocal_session = [None]
 
         try:
+            # Circuit breaker: if previous upstream attempts have been
+            # repeatedly silently dropped, don't waste another 10 s of
+            # client wait — close fast so the controller backs off too.
+            now = asyncio.get_event_loop().time()
+            if now < self._upstream_blocked_until:
+                remaining = int(self._upstream_blocked_until - now)
+                logger.warning(
+                    "Upstream breaker tripped — refusing %s for %ds more",
+                    peer, remaining,
+                )
+                return
             ssl_ctx = self._build_upstream_ssl_ctx()
-            upstream_reader, upstream_writer = await asyncio.open_connection(
-                self.config["proxy"]["upstream_host"],
-                self.config["proxy"]["upstream_port"],
-                ssl=ssl_ctx,
-                server_hostname=self.config["proxy"]["upstream_host"],
-            )
+            try:
+                upstream_reader, upstream_writer = await asyncio.wait_for(
+                    asyncio.open_connection(
+                        self.config["proxy"]["upstream_host"],
+                        self.config["proxy"]["upstream_port"],
+                        ssl=ssl_ctx,
+                        server_hostname=self.config["proxy"]["upstream_host"],
+                    ),
+                    timeout=self.UPSTREAM_CONNECT_TIMEOUT,
+                )
+            except (asyncio.TimeoutError, OSError, ssl.SSLError) as e:
+                self._upstream_failures += 1
+                if self._upstream_failures >= self.UPSTREAM_FAILURE_THRESHOLD:
+                    self._upstream_blocked_until = now + self.UPSTREAM_BACKOFF_SECONDS
+                    logger.error(
+                        "Upstream unreachable %d× in a row — tripping breaker for %ds (%s)",
+                        self._upstream_failures, int(self.UPSTREAM_BACKOFF_SECONDS), e,
+                    )
+                else:
+                    logger.warning(
+                        "Upstream connect failed (%d/%d): %s",
+                        self._upstream_failures, self.UPSTREAM_FAILURE_THRESHOLD, e,
+                    )
+                return
+            # Healthy upstream — reset the failure counter.
+            self._upstream_failures = 0
 
             async def on_connect_packet(client_id: str) -> ProxySession:
                 dev = self._find_device_by_mac(client_id)
